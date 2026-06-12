@@ -2,24 +2,60 @@
   "expo": {
     "name": "FitMate",
     "slug": "FitMate",
-    "version": "1.0.0",
+    "version": "2.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
+    "scheme": "fitmate",
     "userInterfaceStyle": "light",
+    "backgroundColor": "#FFF8F2",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": false
     },
     "android": {
+      "package": "com.fitmate.app",
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
-      },
-      "predictiveBackGestureEnabled": false
+        "backgroundColor": "#FFF8F2"
+      }
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#FF6B4A",
+          "androidMode": "default",
+          "androidCollapsedTitle": "FitMate"
+        }
+      ],
+      "expo-sharing",
+      "@react-native-google-signin/google-signin",
+      [
+        "react-native-android-widget",
+        {
+          "widgets": [
+            {
+              "name": "FitMateDaily",
+              "minWidth": "250dp",
+              "minHeight": "110dp",
+              "targetCellWidth": 4,
+              "targetCellHeight": 2,
+              "description": "Calories, water & streak at a glance",
+              "updatePeriodMillis": 1800000
+            }
+          ]
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "74a82c48-3dd1-4a84-aa94-7b171a1fc755"
+      }
     }
   }
 }

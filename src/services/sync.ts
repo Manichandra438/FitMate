@@ -1,0 +1,274 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import NetInfo from '@react-native-community/netinfo';
+import { AppState, AppStateStatus } from 'react-native';
+import dayjs from 'dayjs';
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  serverTimestamp,
+  writeBatch,
+} from 'firebase/firestore';
+import { auth, db } from './firebase';
+import { CloudPayload, useFitStore } from '../store/useFitStore';
+import { DayLog } from '../types';
+
+const QUEUE_KEY = 'fitmate-sync-queue';
+const DEBOUNCE_MS = 2000;
+const HYDRATE_DAYS = 90;
+
+// Dirty keys: 'user' (profile/plans/weightHistory) or 'log:YYYY-MM-DD'.
+let dirty = new Set<string>();
+let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+let unsubscribeStore: (() => void) | null = null;
+let unsubscribeNet: (() => void) | null = null;
+let appStateSub: { remove: () => void } | null = null;
+let flushing = false;
+let started = false;
+
+async function loadQueue() {
+  try {
+    const raw = await AsyncStorage.getItem(QUEUE_KEY);
+    if (raw) dirty = new Set(JSON.parse(raw));
+  } catch {
+    // corrupted queue — start fresh
+  }
+}
+
+async function saveQueue() {
+  try {
+    await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify([...dirty]));
+  } catch {
+    // best effort
+  }
+}
+
+function markDirty(keys: string[]) {
+  keys.forEach((k) => dirty.add(k));
+  void saveQueue();
+  if (debounceTimer) clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(() => void flush(), DEBOUNCE_MS);
+}
+
+export async function flush(): Promise<void> {
+  const uid = auth.currentUser?.uid;
+  if (!uid || flushing || dirty.size === 0) return;
+  flushing = true;
+  const keys = [...dirty];
+  try {
+    const state = useFitStore.getState();
+    const batch = writeBatch(db);
+    for (const key of keys) {
+      if (key === 'user') {
+        batch.set(
+          doc(db, 'users', uid),
+          {
+            profile: state.profile,
+            mealPlan: state.mealPlan,
+            exercisePlan: state.exercisePlan,
+            weightHistory: state.weightHistory,
+            schemaVersion: 2,
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+      } else if (key.startsWith('log:')) {
+        const date = key.slice(4);
+        const log = state.logs[date];
+        if (log) {
+          batch.set(doc(db, 'users', uid, 'logs', date), {
+            ...log,
+            updatedAt: serverTimestamp(),
+          });
+        }
+      }
+    }
+    await batch.commit();
+    keys.forEach((k) => dirty.delete(k));
+    await saveQueue();
+  } catch (err) {
+    // Stay dirty; retried on next trigger (reconnect/foreground/change).
+    console.warn('Sync flush failed:', err);
+  } finally {
+    flushing = false;
+  }
+}
+
+/**
+ * Fetches the user's cloud snapshot. Returns null when the user doc
+ * doesn't exist (brand-new account).
+ */
+export async function fetchCloud(uid: string): Promise<CloudPayload | null> {
+  const userSnap = await getDoc(doc(db, 'users', uid));
+  if (!userSnap.exists()) return null;
+
+  const data = userSnap.data();
+  const logs: Record<string, DayLog> = {};
+  const cutoff = dayjs().subtract(HYDRATE_DAYS, 'day').format('YYYY-MM-DD');
+  const logsSnap = await getDocs(collection(db, 'users', uid, 'logs'));
+  logsSnap.forEach((d) => {
+    if (d.id >= cutoff) {
+      const { updatedAt: _ignored, ...log } = d.data() as DayLog & { updatedAt?: unknown };
+      logs[d.id] = log as DayLog;
+    }
+  });
+
+  return {
+    profile: data.profile,
+    mealPlan: data.mealPlan ?? [],
+    exercisePlan: data.exercisePlan,
+    weightHistory: data.weightHistory ?? [],
+    logs,
+  };
+}
+
+/** Pushes the entire local state to the cloud (first sync of a local-only user). */
+export async function pushAll(uid: string): Promise<void> {
+  const state = useFitStore.getState();
+  const batch = writeBatch(db);
+  batch.set(doc(db, 'users', uid), {
+    profile: state.profile,
+    mealPlan: state.mealPlan,
+    exercisePlan: state.exercisePlan,
+    weightHistory: state.weightHistory,
+    schemaVersion: 2,
+    updatedAt: serverTimestamp(),
+  });
+  const dates = Object.keys(state.logs);
+  for (let i = 0; i < dates.length; i += 400) {
+    // writeBatch caps at 500 ops; chunk conservatively (first chunk shares
+    // the batch with the user doc).
+    const chunkBatch = i === 0 ? batch : writeBatch(db);
+    for (const date of dates.slice(i, i + 400)) {
+      chunkBatch.set(doc(db, 'users', uid, 'logs', date), {
+        ...state.logs[date],
+        updatedAt: serverTimestamp(),
+      });
+    }
+    await chunkBatch.commit();
+  }
+  if (dates.length === 0) await batch.commit();
+}
+
+/**
+ * Hydrates local state from the cloud, then starts the write-through engine.
+ * MUST be called once after sign-in, before the user can edit data.
+ *
+ * Returns 'onboarding' when neither cloud nor local has an onboarded profile.
+ */
+export async function startSync(): Promise<'ready' | 'onboarding'> {
+  const uid = auth.currentUser?.uid;
+  if (!uid) throw new Error('startSync called without a signed-in user');
+  if (started) stopSync();
+  started = true;
+
+  await loadQueue();
+  const hadOfflineEdits = dirty.size > 0;
+
+  let result: 'ready' | 'onboarding' = 'ready';
+  try {
+    const cloud = await fetchCloud(uid);
+    const local = useFitStore.getState();
+
+    if (cloud && cloud.profile?.onboarded) {
+      if (hadOfflineEdits) {
+        // Offline edits exist: keep local versions of dirty docs, take cloud
+        // for everything else (per-doc last-writer-wins, local is newer).
+        const merged: Partial<CloudPayload> = { ...cloud };
+        if (dirty.has('user')) {
+          merged.profile = local.profile;
+          merged.mealPlan = local.mealPlan;
+          merged.exercisePlan = local.exercisePlan;
+          merged.weightHistory = local.weightHistory;
+        }
+        merged.logs = { ...cloud.logs };
+        for (const key of dirty) {
+          if (key.startsWith('log:')) {
+            const date = key.slice(4);
+            if (local.logs[date]) merged.logs[date] = local.logs[date];
+          }
+        }
+        useFitStore.getState().hydrateFromCloud(merged);
+      } else {
+        // Fresh device or stale local copy — cloud wins wholesale.
+        useFitStore.setState({
+          profile: cloud.profile,
+          mealPlan: cloud.mealPlan,
+          exercisePlan: cloud.exercisePlan,
+          weightHistory: cloud.weightHistory,
+          logs: cloud.logs,
+        });
+      }
+    } else if (local.profile.onboarded) {
+      // Existing local user, first cloud sync — push everything up.
+      await pushAll(uid);
+    } else {
+      result = 'onboarding';
+    }
+  } catch (err) {
+    console.warn('Cloud hydration failed (continuing local-first):', err);
+    if (!useFitStore.getState().profile.onboarded) result = 'onboarding';
+  }
+
+  // Subscribe AFTER hydration so we never push pre-hydration state.
+  let prev = useFitStore.getState();
+  unsubscribeStore = useFitStore.subscribe((state) => {
+    const keys: string[] = [];
+    if (
+      state.profile !== prev.profile ||
+      state.mealPlan !== prev.mealPlan ||
+      state.exercisePlan !== prev.exercisePlan ||
+      state.weightHistory !== prev.weightHistory
+    ) {
+      keys.push('user');
+    }
+    if (state.logs !== prev.logs) {
+      for (const date of Object.keys(state.logs)) {
+        if (state.logs[date] !== prev.logs[date]) keys.push(`log:${date}`);
+      }
+    }
+    prev = state;
+    if (keys.length) markDirty(keys);
+  });
+
+  unsubscribeNet = NetInfo.addEventListener((netState) => {
+    if (netState.isConnected) void flush();
+  });
+
+  appStateSub = AppState.addEventListener('change', (status: AppStateStatus) => {
+    if (status === 'active') void flush();
+  });
+
+  if (hadOfflineEdits) void flush();
+
+  return result;
+}
+
+export function stopSync() {
+  unsubscribeStore?.();
+  unsubscribeStore = null;
+  unsubscribeNet?.();
+  unsubscribeNet = null;
+  appStateSub?.remove();
+  appStateSub = null;
+  if (debounceTimer) clearTimeout(debounceTimer);
+  debounceTimer = null;
+  started = false;
+}
+
+/** Deletes every cloud doc for the user. Used by reset and account deletion. */
+export async function deleteCloudData(uid: string): Promise<void> {
+  const logsSnap = await getDocs(collection(db, 'users', uid, 'logs'));
+  const docs = logsSnap.docs;
+  for (let i = 0; i < docs.length; i += 450) {
+    const batch = writeBatch(db);
+    docs.slice(i, i + 450).forEach((d) => batch.delete(d.ref));
+    await batch.commit();
+  }
+  const batch = writeBatch(db);
+  batch.delete(doc(db, 'users', uid));
+  await batch.commit();
+  dirty.clear();
+  await saveQueue();
+}

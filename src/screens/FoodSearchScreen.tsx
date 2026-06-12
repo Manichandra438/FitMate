@@ -1,0 +1,407 @@
+import React, { useState, useRef } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TextInput,
+  FlatList,
+  TouchableOpacity,
+  Modal,
+  KeyboardAvoidingView,
+  Platform,
+  Alert,
+  ActivityIndicator,
+} from 'react-native';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
+import { COLORS, NutritionixFood } from '../types';
+import { searchFoods, getNutrients } from '../services/nutritionix';
+import { useFitStore } from '../store/useFitStore';
+import { success } from '../utils/haptics';
+
+type RouteParams = {
+  FoodSearch: { mealId: string; mealName: string };
+};
+
+export default function FoodSearchScreen() {
+  const navigation = useNavigation();
+  const route = useRoute<RouteProp<RouteParams, 'FoodSearch'>>();
+  const { mealId, mealName } = route.params;
+  const { logMeal } = useFitStore();
+
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<NutritionixFood[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [selected, setSelected] = useState<NutritionixFood | null>(null);
+  const [grams, setGrams] = useState('100');
+  const [gramModalVisible, setGramModalVisible] = useState(false);
+
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleSearch = (text: string) => {
+    setQuery(text);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (text.trim().length < 2) {
+      setResults([]);
+      return;
+    }
+    debounceRef.current = setTimeout(async () => {
+      setLoading(true);
+      const foods = await searchFoods(text);
+      setResults(foods);
+      setLoading(false);
+    }, 500);
+  };
+
+  const handleSelect = (food: NutritionixFood) => {
+    setSelected(food);
+    setGrams(String(food.serving_weight_grams || 100));
+    setGramModalVisible(true);
+  };
+
+  const handleConfirm = () => {
+    if (!selected) return;
+    const g = parseFloat(grams);
+    if (isNaN(g) || g <= 0) {
+      Alert.alert('Invalid grams', 'Enter a valid gram amount.');
+      return;
+    }
+    const { kcal, protein } = getNutrients(selected, g);
+    logMeal(mealId, kcal, protein);
+    success();
+    setGramModalVisible(false);
+    navigation.goBack();
+  };
+
+  const renderItem = ({ item }: { item: NutritionixFood }) => (
+    <TouchableOpacity style={styles.resultItem} onPress={() => handleSelect(item)}>
+      <View style={styles.resultLeft}>
+        <Text style={styles.resultName}>
+          {item.food_name.charAt(0).toUpperCase() + item.food_name.slice(1)}
+        </Text>
+        <Text style={styles.resultMeta}>
+          {item.serving_weight_grams}g · ~{Math.round(item.nf_calories)} kcal ·{' '}
+          ~{Math.round(item.nf_protein)}g protein
+        </Text>
+      </View>
+      <Ionicons name="add-circle-outline" size={22} color={COLORS.green} />
+    </TouchableOpacity>
+  );
+
+  return (
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      {/* Search bar */}
+      <View style={styles.searchBar}>
+        <Ionicons name="search" size={18} color={COLORS.textSecondary} />
+        <TextInput
+          style={styles.input}
+          placeholder="Search food (e.g. dal, chicken, roti)"
+          placeholderTextColor={COLORS.textSecondary}
+          value={query}
+          onChangeText={handleSearch}
+          autoFocus
+          returnKeyType="search"
+        />
+        {query.length > 0 && (
+          <TouchableOpacity onPress={() => { setQuery(''); setResults([]); }}>
+            <Ionicons name="close-circle" size={18} color={COLORS.textSecondary} />
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {/* Quick suggestions */}
+      {query.length === 0 && (
+        <View style={styles.suggestions}>
+          <Text style={styles.suggestionsTitle}>Common searches</Text>
+          <View style={styles.chips}>
+            {[
+              'dal', 'roti', 'rice', 'chicken', 'egg', 'banana',
+              'paneer', 'sabzi', 'chana', 'dosa',
+            ].map((s) => (
+              <TouchableOpacity
+                key={s}
+                style={styles.chip}
+                onPress={() => handleSearch(s)}
+              >
+                <Text style={styles.chipText}>{s}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      )}
+
+      {/* Loading */}
+      {loading && (
+        <View style={styles.loadingRow}>
+          <ActivityIndicator color={COLORS.green} />
+          <Text style={styles.loadingText}>Searching foods...</Text>
+        </View>
+      )}
+
+      {/* Results */}
+      <FlatList
+        data={results}
+        keyExtractor={(item, i) => `${item.food_name}_${i}`}
+        renderItem={renderItem}
+        contentContainerStyle={styles.list}
+        keyboardShouldPersistTaps="handled"
+        ListEmptyComponent={
+          !loading && query.length >= 2 ? (
+            <Text style={styles.empty}>No results for "{query}"</Text>
+          ) : null
+        }
+      />
+
+      {/* Gram entry modal */}
+      <Modal
+        visible={gramModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setGramModalVisible(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setGramModalVisible(false)}
+        >
+          <TouchableOpacity
+            style={styles.modalSheet}
+            activeOpacity={1}
+            onPress={() => {}}
+          >
+            <View style={styles.modalHandle} />
+            {selected && (
+              <>
+                <Text style={styles.modalTitle}>
+                  {selected.food_name.charAt(0).toUpperCase() +
+                    selected.food_name.slice(1)}
+                </Text>
+                <Text style={styles.modalSub}>
+                  Per 100g: ~
+                  {selected.serving_weight_grams > 0
+                    ? Math.round((selected.nf_calories / selected.serving_weight_grams) * 100)
+                    : Math.round(selected.nf_calories)}{' '}
+                  kcal ·{' '}
+                  ~{selected.serving_weight_grams > 0
+                    ? Math.round((selected.nf_protein / selected.serving_weight_grams) * 100)
+                    : Math.round(selected.nf_protein)}
+                  g protein
+                </Text>
+
+                <Text style={styles.gramLabel}>How many grams?</Text>
+                <TextInput
+                  style={styles.gramInput}
+                  value={grams}
+                  onChangeText={setGrams}
+                  keyboardType="numeric"
+                  selectTextOnFocus
+                  placeholder="100"
+                  placeholderTextColor={COLORS.textSecondary}
+                />
+
+                {/* Preview */}
+                {!isNaN(parseFloat(grams)) && parseFloat(grams) > 0 && selected.serving_weight_grams > 0 && (
+                  <Text style={styles.preview}>
+                    ≈{' '}
+                    {Math.round(
+                      (selected.nf_calories / selected.serving_weight_grams) *
+                        parseFloat(grams)
+                    )}{' '}
+                    kcal ·{' '}
+                    {Math.round(
+                      (selected.nf_protein / selected.serving_weight_grams) *
+                        parseFloat(grams) *
+                        10
+                    ) / 10}
+                    g protein
+                  </Text>
+                )}
+
+                <TouchableOpacity
+                  style={styles.confirmBtn}
+                  onPress={handleConfirm}
+                >
+                  <Ionicons
+                    name="checkmark-circle"
+                    size={20}
+                    color={COLORS.bg}
+                  />
+                  <Text style={styles.confirmText}>Log this food</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+    </KeyboardAvoidingView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: COLORS.bg },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.card,
+    margin: 16,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    gap: 10,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  input: {
+    flex: 1,
+    color: COLORS.textPrimary,
+    fontSize: 16,
+  },
+  suggestions: {
+    paddingHorizontal: 16,
+    marginBottom: 8,
+  },
+  suggestionsTitle: {
+    color: COLORS.textSecondary,
+    fontSize: 12,
+    marginBottom: 10,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  chips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  chip: {
+    backgroundColor: COLORS.card,
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  chipText: {
+    color: COLORS.textPrimary,
+    fontSize: 13,
+  },
+  loadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    gap: 10,
+    marginBottom: 8,
+  },
+  loadingText: {
+    color: COLORS.textSecondary,
+    fontSize: 13,
+  },
+  list: {
+    paddingHorizontal: 16,
+  },
+  resultItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.card,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    gap: 12,
+  },
+  resultLeft: { flex: 1 },
+  resultName: {
+    color: COLORS.textPrimary,
+    fontSize: 15,
+    fontWeight: '600',
+    marginBottom: 3,
+  },
+  resultMeta: {
+    color: COLORS.textSecondary,
+    fontSize: 12,
+  },
+  empty: {
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    marginTop: 40,
+    fontSize: 14,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(46,42,38,0.35)',
+    justifyContent: 'flex-end',
+  },
+  modalSheet: {
+    backgroundColor: COLORS.card,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    padding: 20,
+    paddingBottom: 40,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderBottomWidth: 0,
+  },
+  modalHandle: {
+    width: 40,
+    height: 4,
+    backgroundColor: COLORS.border,
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: 16,
+  },
+  modalTitle: {
+    color: COLORS.textPrimary,
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 4,
+    textTransform: 'capitalize',
+  },
+  modalSub: {
+    color: COLORS.textSecondary,
+    fontSize: 13,
+    marginBottom: 20,
+  },
+  gramLabel: {
+    color: COLORS.textSecondary,
+    fontSize: 13,
+    marginBottom: 8,
+    fontWeight: '600',
+  },
+  gramInput: {
+    backgroundColor: COLORS.bg,
+    borderRadius: 10,
+    padding: 14,
+    color: COLORS.textPrimary,
+    fontSize: 24,
+    fontWeight: '700',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  preview: {
+    color: COLORS.green,
+    fontSize: 15,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  confirmBtn: {
+    backgroundColor: COLORS.green,
+    borderRadius: 12,
+    padding: 15,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  confirmText: {
+    color: COLORS.bg,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+});
