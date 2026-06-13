@@ -8,6 +8,9 @@ import {
   Alert,
   Image,
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { RootStackParamList } from '../navigation/AppNavigator';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radius, spacing } from '../theme';
 import { useFitStore } from '../store/useFitStore';
@@ -20,6 +23,7 @@ import { scheduleWidgetRefresh } from '../widgets/updateWidget';
 import SectionHeader from '../components/ui/SectionHeader';
 
 export default function SettingsScreen() {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { profile, mealPlan, exercisePlan, resetAll } = useFitStore();
   const [busy, setBusy] = useState<string | null>(null);
   const user = auth.currentUser;
@@ -213,6 +217,12 @@ export default function SettingsScreen() {
       <Text style={styles.planMeta}>
         {dietLabel} · {profile.mealsPerDay} meals/day · {mealPlan.length} meals planned
       </Text>
+      <Row
+        icon="create"
+        label="Edit profile & preferences"
+        sub="Update weight, height, diet, schedule — recalculates plan"
+        onPress={() => navigation.navigate('EditProfile')}
+      />
       <Row
         icon="refresh"
         label="Redo setup & regenerate plan"

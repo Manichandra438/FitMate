@@ -18,12 +18,14 @@ import WaterScreen from '../screens/WaterScreen';
 import LoginScreen from '../screens/LoginScreen';
 import SplashScreen from '../screens/SplashScreen';
 import OnboardingScreen from '../screens/onboarding/OnboardingScreen';
+import EditProfileScreen from '../screens/EditProfileScreen';
 
 export type RootStackParamList = {
   Tabs: undefined;
   FoodSearch: { mealId: string; mealName: string };
   Exercise: undefined;
   Water: undefined;
+  EditProfile: undefined;
 };
 
 export type TabParamList = {
@@ -177,6 +179,11 @@ export default function AppNavigator({ user, loading, onboarded }: Props) {
           name="Water"
           component={WaterScreen}
           options={{ title: 'Water', headerBackTitle: 'Home' }}
+        />
+        <Stack.Screen
+          name="EditProfile"
+          component={EditProfileScreen}
+          options={{ title: 'Edit Profile', headerBackTitle: 'Settings' }}
         />
       </Stack.Navigator>
     );
