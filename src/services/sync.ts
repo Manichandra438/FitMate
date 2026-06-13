@@ -96,6 +96,47 @@ export async function flush(): Promise<void> {
 }
 
 /**
+ * Fetches only the user profile doc (fast). Returns null for brand-new accounts.
+ */
+async function fetchUserDoc(uid: string): Promise<Omit<CloudPayload, 'logs'> | null> {
+  const userSnap = await getDoc(doc(db, 'users', uid));
+  if (!userSnap.exists()) return null;
+  const data = userSnap.data();
+  return {
+    profile: data.profile,
+    mealPlan: data.mealPlan ?? [],
+    exercisePlan: data.exercisePlan,
+    weightHistory: data.weightHistory ?? [],
+  };
+}
+
+/**
+ * Fetches logs subcollection in the background after UI is already shown.
+ */
+async function fetchLogsInBackground(uid: string) {
+  try {
+    const logs: Record<string, DayLog> = {};
+    const cutoff = dayjs().subtract(HYDRATE_DAYS, 'day').format('YYYY-MM-DD');
+    const logsSnap = await getDocs(collection(db, 'users', uid, 'logs'));
+    logsSnap.forEach((d) => {
+      if (d.id >= cutoff) {
+        const { updatedAt: _ignored, ...log } = d.data() as DayLog & { updatedAt?: unknown };
+        logs[d.id] = log as DayLog;
+      }
+    });
+    // Merge logs without overwriting any locally-queued changes.
+    const currentLogs = useFitStore.getState().logs;
+    const mergedLogs: Record<string, DayLog> = { ...logs };
+    for (const date of Object.keys(currentLogs)) {
+      if (dirty.has(`log:${date}`)) mergedLogs[date] = currentLogs[date];
+    }
+    useFitStore.setState((s) => ({ logs: { ...mergedLogs, ...s.logs } }));
+  } catch (err) {
+    console.warn('Background log fetch failed:', err);
+  }
+}
+
+/**
  * Fetches the user's cloud snapshot. Returns null when the user doc
  * doesn't exist (brand-new account).
  */
@@ -168,38 +209,29 @@ export async function startSync(): Promise<'ready' | 'onboarding'> {
 
   let result: 'ready' | 'onboarding' = 'ready';
   try {
-    const cloud = await fetchCloud(uid);
+    // Fast path: fetch only the user doc (no logs) so UI unblocks quickly.
+    const cloud = await fetchUserDoc(uid);
     const local = useFitStore.getState();
 
     if (cloud && cloud.profile?.onboarded) {
-      if (hadOfflineEdits) {
-        // Offline edits exist: keep local versions of dirty docs, take cloud
-        // for everything else (per-doc last-writer-wins, local is newer).
-        const merged: Partial<CloudPayload> = { ...cloud };
-        if (dirty.has('user')) {
-          merged.profile = local.profile;
-          merged.mealPlan = local.mealPlan;
-          merged.exercisePlan = local.exercisePlan;
-          merged.weightHistory = local.weightHistory;
-        }
-        merged.logs = { ...cloud.logs };
-        for (const key of dirty) {
-          if (key.startsWith('log:')) {
-            const date = key.slice(4);
-            if (local.logs[date]) merged.logs[date] = local.logs[date];
-          }
-        }
-        useFitStore.getState().hydrateFromCloud(merged);
+      if (hadOfflineEdits && dirty.has('user')) {
+        // Keep local user doc (newer), take cloud for everything else.
+        useFitStore.setState({
+          mealPlan: local.mealPlan,
+          exercisePlan: local.exercisePlan,
+          weightHistory: local.weightHistory,
+          profile: local.profile,
+        });
       } else {
-        // Fresh device or stale local copy — cloud wins wholesale.
         useFitStore.setState({
           profile: cloud.profile,
           mealPlan: cloud.mealPlan,
           exercisePlan: cloud.exercisePlan,
           weightHistory: cloud.weightHistory,
-          logs: cloud.logs,
         });
       }
+      // Fetch logs in background — UI is already showing.
+      void fetchLogsInBackground(uid);
     } else if (local.profile.onboarded) {
       // Existing local user, first cloud sync — push everything up.
       await pushAll(uid);

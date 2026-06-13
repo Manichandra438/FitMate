@@ -24,7 +24,9 @@ export default function App() {
     if (user) {
       if (syncedUid.current === user.uid) return;
       syncedUid.current = user.uid;
-      setHydrating(true);
+      // Only show splash on fresh installs — returning users see local data instantly.
+      const hasLocalData = useFitStore.getState().profile.onboarded;
+      if (!hasLocalData) setHydrating(true);
       startSync()
         .catch(console.warn)
         .finally(() => setHydrating(false));
