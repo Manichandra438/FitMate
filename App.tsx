@@ -3,11 +3,11 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import * as Notifications from 'expo-notifications';
-import { StyleSheet } from 'react-native';
+import { AppState, StyleSheet } from 'react-native';
 import './src/services/firebase'; // initialize Firebase before anything uses it
 import AppNavigator from './src/navigation/AppNavigator';
 import { useFitStore } from './src/store/useFitStore';
-import { scheduleAllNotifications } from './src/services/notifications';
+import { scheduleAllNotifications, checkAndSendSmartReminders } from './src/services/notifications';
 import { useAuth } from './src/hooks/useAuth';
 import { startSync, stopSync } from './src/services/sync';
 import { scheduleWidgetRefresh } from './src/widgets/updateWidget';
@@ -51,6 +51,18 @@ export default function App() {
   useEffect(() => {
     const unsubscribe = useFitStore.subscribe(() => scheduleWidgetRefresh());
     return unsubscribe;
+  }, []);
+
+  // Smart reminders: fire contextual nudges when app comes to foreground.
+  useEffect(() => {
+    const handler = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') return;
+      const { mealPlan, profile, getTodayLog } = useFitStore.getState();
+      if (!profile.onboarded) return;
+      const log = getTodayLog();
+      checkAndSendSmartReminders(mealPlan, log, profile).catch(() => {});
+    });
+    return () => handler.remove();
   }, []);
 
   // Handle notification taps

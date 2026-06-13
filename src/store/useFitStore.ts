@@ -130,6 +130,7 @@ export const useFitStore = create<FitState>()(
             wakeTime: answers.wakeTime,
             sleepTime: answers.sleepTime,
             goalDate: answers.goalDate ?? targets.goalDate ?? undefined,
+            fastingProtocol: answers.fastingProtocol ?? 'none',
             onboarded: true,
           },
           mealPlan,

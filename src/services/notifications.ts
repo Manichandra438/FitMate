@@ -1,7 +1,7 @@
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import Constants from 'expo-constants';
-import { Meal, ExercisePlan, UserProfile } from '../types';
+import { DayLog, Meal, ExercisePlan, UserProfile } from '../types';
 
 // Expo Go (SDK 53+) removed remote push notifications.
 // Local notifications still work. We skip push registration in Expo Go.
@@ -209,5 +209,83 @@ export async function cancelAllNotifications(): Promise<void> {
     await Notifications.cancelAllScheduledNotificationsAsync();
   } catch (err) {
     console.warn('Could not cancel notifications:', err);
+  }
+}
+
+// In-memory cooldown: keys sent this session, cleared on app restart.
+const _smartCooldown = new Set<string>();
+
+/**
+ * Context-aware nudges — call whenever the app comes to foreground.
+ * Fires at most one notification per key per session.
+ */
+export async function checkAndSendSmartReminders(
+  mealPlan: Meal[],
+  log: DayLog | undefined,
+  profile: UserProfile
+): Promise<void> {
+  if (!Device.isDevice) return;
+  try {
+    const granted = await requestNotificationPermission();
+    if (!granted) return;
+  } catch {
+    return;
+  }
+
+  const now = new Date();
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+
+  const send = async (id: string, title: string, body: string, screen: string) => {
+    if (_smartCooldown.has(id)) return;
+    _smartCooldown.add(id);
+    try {
+      await Notifications.scheduleNotificationAsync({
+        identifier: id,
+        content: { title, body, data: { screen } },
+        trigger: null, // immediate
+      });
+    } catch (_) { /* web / Expo Go no-op */ }
+  };
+
+  // Meal nudge: meal time passed >30min, still unlogged, within 3-hour window
+  for (const meal of mealPlan) {
+    const { hour, minute } = parseTime(meal.time);
+    const mealMin = hour * 60 + minute;
+    const diff = nowMin - mealMin;
+    if (diff < 30 || diff > 3 * 60) continue;
+    const mealLog = log?.meals.find((m) => m.mealId === meal.id);
+    if (mealLog?.logged || mealLog?.skipped) continue;
+    await send(
+      `smart_meal_${meal.id}`,
+      `🍽️ Did you have ${meal.name}?`,
+      `Don't forget to log it — every meal counts!`,
+      'Meals'
+    );
+  }
+
+  // Water nudge: after 3 pm, drank less than 50% goal
+  if (nowMin >= 15 * 60) {
+    const water = log?.water ?? 0;
+    if (water < profile.waterGoal / 2) {
+      await send(
+        'smart_water',
+        '💧 You\'re behind on water!',
+        `Only ${water} of ${profile.waterGoal} glasses so far. Drink up!`,
+        'Water'
+      );
+    }
+  }
+
+  // Exercise nudge: after 7 pm, not exercised and not skipped
+  if (nowMin >= 19 * 60) {
+    const ex = log?.exercise;
+    if (!ex?.done && !ex?.skipped) {
+      await send(
+        'smart_exercise',
+        '🏃 Exercise still pending!',
+        'A quick workout now is better than skipping. Let\'s go!',
+        'Exercise'
+      );
+    }
   }
 }

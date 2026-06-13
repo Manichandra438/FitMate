@@ -66,6 +66,7 @@ export type ActivityLevel = 'sedentary' | 'light' | 'moderate' | 'active' | 'ver
 export type DietPref = 'veg' | 'eggetarian' | 'nonveg';
 export type GoalPace = 'gentle' | 'steady' | 'aggressive';
 export type MealsPerDay = 3 | 4 | 5 | 6;
+export type FastingProtocol = 'none' | '16:8' | '18:6' | '20:4';
 
 export interface UserProfile {
   name: string;
@@ -86,8 +87,9 @@ export interface UserProfile {
   wakeTime: string; // "07:00"
   sleepTime: string; // "23:00"
   onboarded: boolean;
-  goalDate?: string; // user-chosen target date YYYY-MM-DD
-  favouriteFoods?: string[]; // food names starred by user
+  goalDate?: string;
+  favouriteFoods?: string[];
+  fastingProtocol?: FastingProtocol;
 }
 
 export interface OnboardingAnswers {
@@ -104,7 +106,8 @@ export interface OnboardingAnswers {
   wakeTime: string;
   sleepTime: string;
   waterGoal: number;
-  goalDate?: string; // user-chosen target date YYYY-MM-DD
+  goalDate?: string;
+  fastingProtocol?: FastingProtocol;
 }
 
 export interface PlanTargets {

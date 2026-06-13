@@ -22,6 +22,7 @@ import FadeSlideIn from '../../components/anim/FadeSlideIn';
 import {
   ActivityLevel,
   DietPref,
+  FastingProtocol,
   Gender,
   GoalPace,
   MealsPerDay,
@@ -65,6 +66,13 @@ const SLEEP_TIMES = [
 ];
 const GOAL_PRESETS = [1, 2, 3, 6, 12, 18, 24];
 
+const IF_OPTIONS: { value: FastingProtocol; label: string; window: string; desc: string }[] = [
+  { value: 'none', label: 'No fasting', window: 'All day', desc: 'Eat anytime within your schedule' },
+  { value: '16:8', label: '16:8', window: '12 pm – 8 pm', desc: 'Fast 16h, eat in an 8-hour window' },
+  { value: '18:6', label: '18:6', window: '1 pm – 7 pm', desc: 'Fast 18h, eat in a 6-hour window' },
+  { value: '20:4', label: '20:4', window: '2 pm – 6 pm', desc: 'Fast 20h, eat in a 4-hour window' },
+];
+
 const fmt12 = (t: string) => {
   const [hh, mm] = t.split(':').map(Number);
   const ampm = hh < 12 ? 'AM' : 'PM';
@@ -92,6 +100,7 @@ export default function OnboardingScreen() {
   const [dietPref, setDietPref] = useState<DietPref>('nonveg');
   const [mealsPerDay, setMealsPerDay] = useState<MealsPerDay>(4);
   const [goalPace, setGoalPace] = useState<GoalPace>('steady');
+  const [fastingProtocol, setFastingProtocol] = useState<FastingProtocol>('none');
 
   // Goal date
   const [goalDateMonths, setGoalDateMonths] = useState(6);
@@ -127,11 +136,12 @@ export default function OnboardingScreen() {
       wakeTime,
       sleepTime,
       waterGoal: 8,
+      fastingProtocol,
     };
     const targets = computeTargets(base);
     base.waterGoal = waterGoal ?? targets.waterGoal;
     return base;
-  }, [name, age, gender, heightCm, currentWeight, goalWeight, activityLevel, dietPref, mealsPerDay, goalPace, wakeTime, sleepTime, waterGoal]);
+  }, [name, age, gender, heightCm, currentWeight, goalWeight, activityLevel, dietPref, mealsPerDay, goalPace, wakeTime, sleepTime, waterGoal, fastingProtocol]);
 
   const targets = useMemo(() => (answers ? computeTargets(answers) : null), [answers]);
 
@@ -333,6 +343,31 @@ export default function OnboardingScreen() {
               value={mealsPerDay}
               onChange={setMealsPerDay}
             />
+            <Text style={[styles.fieldLabel, { marginTop: spacing.xxl }]}>Intermittent fasting</Text>
+            <View style={{ gap: spacing.sm }}>
+              {IF_OPTIONS.map((o) => (
+                <TouchableOpacity
+                  key={o.value}
+                  style={[styles.ifCard, fastingProtocol === o.value && styles.ifCardSelected]}
+                  onPress={() => setFastingProtocol(o.value)}
+                  activeOpacity={0.7}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.ifLabel, fastingProtocol === o.value && styles.ifLabelSelected]}>{o.label}</Text>
+                    <Text style={styles.ifWindow}>{o.window}</Text>
+                    <Text style={styles.ifDesc}>{o.desc}</Text>
+                  </View>
+                  {fastingProtocol === o.value && (
+                    <Ionicons name="checkmark-circle" size={22} color={colors.primary} />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </View>
+            {fastingProtocol !== 'none' && (
+              <Text style={styles.hint}>
+                Meal times will be set within your eating window.
+              </Text>
+            )}
           </StepWrap>
         );
 
@@ -563,6 +598,12 @@ export default function OnboardingScreen() {
                     label="Meal plan"
                     value={`${answers.mealsPerDay} meals · ${DIET_OPTIONS.find((d) => d.value === answers.dietPref)?.title}`}
                   />
+                  {fastingProtocol !== 'none' && (
+                    <SummaryLine
+                      label="Fasting"
+                      value={`${fastingProtocol} · ${IF_OPTIONS.find((o) => o.value === fastingProtocol)?.window ?? ''}`}
+                    />
+                  )}
                   <SummaryLine label="Wake up" value={fmt12(wakeTime)} />
                   <SummaryLine label="Sleep" value={fmt12(sleepTime)} />
                 </GradientCard>
@@ -735,4 +776,19 @@ const styles = StyleSheet.create({
   },
   summaryLineLabel: { fontSize: 14, color: colors.textSecondary },
   summaryLineValue: { fontSize: 14, fontWeight: '700', color: colors.textPrimary },
+  ifCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    padding: spacing.md,
+    gap: spacing.sm,
+  },
+  ifCardSelected: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
+  ifLabel: { fontSize: 15, fontWeight: '700', color: colors.textPrimary, marginBottom: 2 },
+  ifLabelSelected: { color: colors.primaryDark },
+  ifWindow: { fontSize: 12, fontWeight: '600', color: colors.primary, marginBottom: 2 },
+  ifDesc: { fontSize: 12, color: colors.textSecondary },
 });

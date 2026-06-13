@@ -11,6 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
 import { COLORS } from '../types';
 import { useFitStore } from '../store/useFitStore';
+import CalorieBalanceChart from '../components/CalorieBalanceChart';
 
 type TabType = 'daily' | 'weekly' | 'streaks';
 
@@ -261,6 +262,12 @@ export default function AnalyticsScreen() {
                 </Text>
               </View>
             )}
+
+            {/* Calorie balance chart */}
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Calorie Balance (7 Days)</Text>
+              <CalorieBalanceChart />
+            </View>
 
             {/* Daily breakdown */}
             <View style={styles.card}>

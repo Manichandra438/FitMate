@@ -2,6 +2,7 @@ import dayjs from 'dayjs';
 import {
   ActivityLevel,
   DietPref,
+  FastingProtocol,
   FoodItem,
   GoalPace,
   Meal,
@@ -155,10 +156,29 @@ function formatTime(minutes: number): string {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 
-function mealTimes(count: number, wakeTime: string, sleepTime: string): string[] {
-  let start = parseTime(wakeTime) + 60;
-  let end = parseTime(sleepTime) - 90;
-  if (end <= start) end = start + (count - 1) * 150; // degenerate inputs fallback
+const EATING_WINDOWS: Partial<Record<FastingProtocol, { startMin: number; endMin: number }>> = {
+  '16:8': { startMin: 12 * 60, endMin: 20 * 60 },
+  '18:6': { startMin: 13 * 60, endMin: 19 * 60 },
+  '20:4': { startMin: 14 * 60, endMin: 18 * 60 },
+};
+
+function mealTimes(
+  count: number,
+  wakeTime: string,
+  sleepTime: string,
+  fastingProtocol?: FastingProtocol
+): string[] {
+  const window = fastingProtocol ? EATING_WINDOWS[fastingProtocol] : undefined;
+  let start: number;
+  let end: number;
+  if (window) {
+    start = window.startMin;
+    end = window.endMin - 30;
+  } else {
+    start = parseTime(wakeTime) + 60;
+    end = parseTime(sleepTime) - 90;
+    if (end <= start) end = start + (count - 1) * 150;
+  }
   const step = count > 1 ? (end - start) / (count - 1) : 0;
   return Array.from({ length: count }, (_, i) => formatTime(start + step * i));
 }
@@ -212,7 +232,7 @@ export function generateMealPlan(
   targets: PlanTargets
 ): Meal[] {
   const slots = MEAL_SPLITS[answers.mealsPerDay];
-  const times = mealTimes(slots.length, answers.wakeTime, answers.sleepTime);
+  const times = mealTimes(slots.length, answers.wakeTime, answers.sleepTime, answers.fastingProtocol);
 
   const usedTemplates = new Set<string>();
   const chosenTemplates: MealTemplate[] = [];
