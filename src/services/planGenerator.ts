@@ -295,3 +295,14 @@ export function generatePlan(answers: OnboardingAnswers): {
   const mealPlan = generateMealPlan(answers, targets);
   return { targets, mealPlan };
 }
+
+/** Replace a meal's foods with a different template, keeping the same calorie target. */
+export function swapMealTemplate(originalMeal: Meal, template: MealTemplate): Meal {
+  const foods = buildFoods(template, originalMeal.totalKcal, 0);
+  return {
+    ...originalMeal,
+    foods,
+    totalKcal: Math.round(foods.reduce((s, f) => s + f.kcal, 0)),
+    totalProtein: Math.round(foods.reduce((s, f) => s + f.protein, 0) * 10) / 10,
+  };
+}

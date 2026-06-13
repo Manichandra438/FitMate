@@ -27,7 +27,8 @@ export default function FoodSearchScreen() {
   const navigation = useNavigation();
   const route = useRoute<RouteProp<RouteParams, 'FoodSearch'>>();
   const { mealId, mealName } = route.params;
-  const { logMeal } = useFitStore();
+  const { logMeal, profile, toggleFavourite } = useFitStore();
+  const favourites = profile.favouriteFoods ?? [];
 
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<NutritionixFood[]>([]);
@@ -73,20 +74,30 @@ export default function FoodSearchScreen() {
     navigation.goBack();
   };
 
-  const renderItem = ({ item }: { item: NutritionixFood }) => (
-    <TouchableOpacity style={styles.resultItem} onPress={() => handleSelect(item)}>
-      <View style={styles.resultLeft}>
-        <Text style={styles.resultName}>
-          {item.food_name.charAt(0).toUpperCase() + item.food_name.slice(1)}
-        </Text>
-        <Text style={styles.resultMeta}>
-          {item.serving_weight_grams}g · ~{Math.round(item.nf_calories)} kcal ·{' '}
-          ~{Math.round(item.nf_protein)}g protein
-        </Text>
-      </View>
-      <Ionicons name="add-circle-outline" size={22} color={COLORS.green} />
-    </TouchableOpacity>
-  );
+  const renderItem = ({ item }: { item: NutritionixFood }) => {
+    const isFav = favourites.includes(item.food_name);
+    return (
+      <TouchableOpacity style={styles.resultItem} onPress={() => handleSelect(item)}>
+        <View style={styles.resultLeft}>
+          <Text style={styles.resultName}>
+            {item.food_name.charAt(0).toUpperCase() + item.food_name.slice(1)}
+          </Text>
+          <Text style={styles.resultMeta}>
+            {item.serving_weight_grams}g · ~{Math.round(item.nf_calories)} kcal ·{' '}
+            ~{Math.round(item.nf_protein)}g protein
+          </Text>
+        </View>
+        <TouchableOpacity
+          onPress={() => toggleFavourite(item.food_name)}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          style={{ marginRight: 8 }}
+        >
+          <Ionicons name={isFav ? 'star' : 'star-outline'} size={20} color={isFav ? '#FFC145' : COLORS.textSecondary} />
+        </TouchableOpacity>
+        <Ionicons name="add-circle-outline" size={22} color={COLORS.green} />
+      </TouchableOpacity>
+    );
+  };
 
   return (
     <KeyboardAvoidingView
@@ -111,6 +122,20 @@ export default function FoodSearchScreen() {
           </TouchableOpacity>
         )}
       </View>
+
+      {/* Favourites */}
+      {query.length === 0 && favourites.length > 0 && (
+        <View style={styles.suggestions}>
+          <Text style={styles.suggestionsTitle}>⭐ Favourites</Text>
+          <View style={styles.chips}>
+            {favourites.map((name) => (
+              <TouchableOpacity key={name} style={[styles.chip, styles.chipFav]} onPress={() => handleSearch(name)}>
+                <Text style={styles.chipText}>{name}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      )}
 
       {/* Quick suggestions */}
       {query.length === 0 && (
@@ -283,6 +308,10 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
     borderWidth: 1,
     borderColor: COLORS.border,
+  },
+  chipFav: {
+    borderColor: '#FFC145',
+    backgroundColor: '#FFF3D6',
   },
   chipText: {
     color: COLORS.textPrimary,

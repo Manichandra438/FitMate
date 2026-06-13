@@ -86,7 +86,9 @@ interface FitState {
   skipExercise: () => void;
   logWeight: (weight: number) => void;
   updateMealPlan: (meals: Meal[]) => void;
+  updateSingleMeal: (mealId: string, updated: Meal) => void;
   updateExercisePlan: (plan: ExercisePlan) => void;
+  toggleFavourite: (foodName: string) => void;
   ensureTodayLog: () => void;
   getTodayLog: () => DayLog;
   getStreak: () => number;
@@ -343,7 +345,29 @@ export const useFitStore = create<FitState>()(
       },
 
       updateMealPlan: (meals) => set({ mealPlan: meals }),
+      updateSingleMeal: (mealId, updated) =>
+        set((s) => {
+          const today = todayStr();
+          const newMealPlan = s.mealPlan.map((m) => (m.id === mealId ? updated : m));
+          const todayLog = s.logs[today];
+          if (!todayLog) return { mealPlan: newMealPlan };
+          const newMeals = todayLog.meals.map((m) => {
+            if (m.mealId !== mealId || m.logged || m.skipped) return m;
+            return { ...m, foods: updated.foods, totalKcal: updated.totalKcal, totalProtein: updated.totalProtein };
+          });
+          return { mealPlan: newMealPlan, logs: { ...s.logs, [today]: { ...todayLog, meals: newMeals } } };
+        }),
       updateExercisePlan: (plan) => set({ exercisePlan: plan }),
+      toggleFavourite: (foodName) =>
+        set((s) => {
+          const favs = s.profile.favouriteFoods ?? [];
+          return {
+            profile: {
+              ...s.profile,
+              favouriteFoods: favs.includes(foodName) ? favs.filter((f) => f !== foodName) : [...favs, foodName],
+            },
+          };
+        }),
 
       getTodayLog: () => {
         const date = todayStr();

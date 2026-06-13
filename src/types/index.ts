@@ -87,6 +87,7 @@ export interface UserProfile {
   sleepTime: string; // "23:00"
   onboarded: boolean;
   goalDate?: string; // user-chosen target date YYYY-MM-DD
+  favouriteFoods?: string[]; // food names starred by user
 }
 
 export interface OnboardingAnswers {

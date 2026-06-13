@@ -11,8 +11,10 @@ import {
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, Meal } from '../types';
+import { COLORS, Meal, MealSlotType, MealTemplate } from '../types';
 import { colors } from '../theme';
+import { MEAL_TEMPLATES } from '../data/mealTemplates';
+import { swapMealTemplate } from '../services/planGenerator';
 import { useFitStore } from '../store/useFitStore';
 import MealCard from '../components/MealCard';
 import ConfettiBurst, { ConfettiBurstHandle } from '../components/anim/ConfettiBurst';
@@ -20,13 +22,15 @@ import { success } from '../utils/haptics';
 
 export default function MealsScreen() {
   const navigation = useNavigation<any>();
-  const { mealPlan, logMeal, skipMeal, unlogMeal, getTodayLog, ensureTodayLog, getTodayTotals } =
+  const { mealPlan, logMeal, skipMeal, unlogMeal, updateSingleMeal, profile, getTodayLog, ensureTodayLog, getTodayTotals } =
     useFitStore();
   const [selectedMeal, setSelectedMeal] = useState<Meal | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [editKcal, setEditKcal] = useState('');
   const [editProtein, setEditProtein] = useState('');
+  const [swapVisible, setSwapVisible] = useState(false);
+  const [swapOptions, setSwapOptions] = useState<MealTemplate[]>([]);
   const confetti = useRef<ConfettiBurstHandle>(null);
 
   useFocusEffect(useCallback(() => { ensureTodayLog(); }, []));
@@ -38,6 +42,33 @@ export default function MealsScreen() {
     setModalVisible(false);
     setSelectedMeal(null);
     setEditMode(false);
+  };
+
+  const inferSlot = (mealName: string): MealSlotType => {
+    const lower = mealName.toLowerCase();
+    if (lower.includes('breakfast')) return 'breakfast';
+    if (lower.includes('lunch')) return 'lunch';
+    if (lower.includes('dinner')) return 'dinner';
+    return 'snack';
+  };
+
+  const handleSwapOpen = () => {
+    if (!selectedMeal) return;
+    const slot = inferSlot(selectedMeal.name);
+    const options = MEAL_TEMPLATES.filter(
+      (t) => t.slot === slot && t.dietPref.includes(profile.dietPref) && t.name !== selectedMeal.name
+    );
+    setSwapOptions(options);
+    setModalVisible(false);
+    setSwapVisible(true);
+  };
+
+  const handleSwapPick = (template: MealTemplate) => {
+    if (!selectedMeal) return;
+    const swapped = swapMealTemplate(selectedMeal, template);
+    updateSingleMeal(selectedMeal.id, swapped);
+    setSwapVisible(false);
+    setSelectedMeal(null);
   };
 
   const handleMealPress = (meal: Meal) => {
@@ -148,6 +179,51 @@ export default function MealsScreen() {
       </ScrollView>
 
       <ConfettiBurst ref={confetti} />
+
+      {/* Swap Meal Modal */}
+      <Modal
+        visible={swapVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setSwapVisible(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setSwapVisible(false)}
+        >
+          <TouchableOpacity style={styles.modalSheet} activeOpacity={1} onPress={() => {}}>
+            <View style={styles.modalHandle} />
+            <Text style={styles.modalTitle}>Swap meal</Text>
+            <Text style={styles.modalTime}>Choose a replacement for the same slot</Text>
+            {swapOptions.length === 0 ? (
+              <Text style={{ color: COLORS.textSecondary, textAlign: 'center', marginVertical: 20 }}>
+                No other options available for your diet preference.
+              </Text>
+            ) : (
+              <ScrollView style={{ maxHeight: 380 }} showsVerticalScrollIndicator={false}>
+                {swapOptions.map((template) => {
+                  const previewFoods = template.foods.map((f) => f.name).slice(0, 3).join(', ');
+                  return (
+                    <TouchableOpacity
+                      key={template.name}
+                      style={styles.swapOption}
+                      onPress={() => handleSwapPick(template)}
+                      activeOpacity={0.7}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.swapOptionName}>{template.name}</Text>
+                        <Text style={styles.swapOptionFoods} numberOfLines={1}>{previewFoods}</Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={18} color={COLORS.textSecondary} />
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            )}
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
 
       {/* Meal Action Modal */}
       <Modal
@@ -263,6 +339,11 @@ export default function MealsScreen() {
                     <TouchableOpacity style={styles.btnSecondary} onPress={handleFoodSearch}>
                       <Ionicons name="search" size={18} color={colors.primaryDark} />
                       <Text style={styles.btnSecondaryText}>Search / replace food</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity style={styles.btnSecondary} onPress={handleSwapOpen}>
+                      <Ionicons name="shuffle" size={18} color={colors.primaryDark} />
+                      <Text style={styles.btnSecondaryText}>Swap meal</Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity style={styles.btnDanger} onPress={handleSkip}>
@@ -480,5 +561,26 @@ const styles = StyleSheet.create({
   btnDangerText: {
     color: COLORS.red,
     fontSize: 14,
+  },
+  swapOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.bg,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 14,
+    marginBottom: 8,
+    gap: 12,
+  },
+  swapOptionName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+    marginBottom: 2,
+  },
+  swapOptionFoods: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
   },
 });

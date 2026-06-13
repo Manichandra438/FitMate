@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   View,
   Text,
@@ -21,11 +21,16 @@ import MealCard from '../components/MealCard';
 import FadeSlideIn from '../components/anim/FadeSlideIn';
 import WaterGlass from '../components/anim/WaterGlass';
 import { useCountUp } from '../hooks/useCountUp';
+import WeeklyReportModal from '../components/WeeklyReportModal';
+import { computeBadges } from '../services/badges';
 
 export default function HomeScreen() {
   const navigation = useNavigation<any>();
+  const [reportVisible, setReportVisible] = useState(false);
   const {
     profile,
+    logs,
+    weightHistory,
     mealPlan,
     logWakeUp,
     addWater,
@@ -47,6 +52,7 @@ export default function HomeScreen() {
   const { kcal, protein } = getTodayTotals();
   const streak = getStreak();
   const remaining = Math.max(profile.calorieGoal - kcal, 0);
+  const earnedBadges = computeBadges(profile, logs, weightHistory, streak).filter((b) => b.earned);
   const remainingAnimated = useCountUp(remaining);
 
   const hour = dayjs().hour();
@@ -79,12 +85,20 @@ export default function HomeScreen() {
         {/* Header */}
         <FadeSlideIn>
           <View style={styles.header}>
-            <View>
+            <View style={{ flex: 1 }}>
               <Text style={styles.greeting}>
                 {greeting}, {profile.name}
               </Text>
               <Text style={styles.subGreeting}>{dayjs().format('dddd, MMMM D')}</Text>
             </View>
+            <TouchableOpacity
+              style={styles.reportBtn}
+              onPress={() => setReportVisible(true)}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="calendar" size={16} color={colors.primary} />
+              <Text style={styles.reportBtnText}>Week</Text>
+            </TouchableOpacity>
             <View style={styles.streakBadge}>
               <Text style={styles.streakFire}>🔥</Text>
               <Text style={styles.streakText}>{streak}</Text>
@@ -128,6 +142,25 @@ export default function HomeScreen() {
             onPress={() => navigation.navigate('Progress')}
           />
         </View>
+
+        {/* Badges */}
+        {earnedBadges.length > 0 && (
+          <FadeSlideIn delay={120}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.badgeScroll}
+              contentContainerStyle={styles.badgeContainer}
+            >
+              {earnedBadges.map((b) => (
+                <View key={b.id} style={styles.badgeChip}>
+                  <Text style={styles.badgeEmoji}>{b.emoji}</Text>
+                  <Text style={styles.badgeTitle}>{b.title}</Text>
+                </View>
+              ))}
+            </ScrollView>
+          </FadeSlideIn>
+        )}
 
         {/* Water quick tap */}
         <GradientCard style={styles.waterCard}>
@@ -218,6 +251,8 @@ export default function HomeScreen() {
 
         <View style={{ height: 24 }} />
       </ScrollView>
+
+      <WeeklyReportModal visible={reportVisible} onClose={() => setReportVisible(false)} />
     </View>
   );
 }
@@ -240,6 +275,19 @@ const styles = StyleSheet.create({
   },
   greeting: { color: colors.textPrimary, fontSize: 24, fontWeight: '800', letterSpacing: -0.5 },
   subGreeting: { color: colors.textSecondary, fontSize: 13, marginTop: 2 },
+  reportBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primarySoft,
+    borderRadius: radius.pill,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    gap: 4,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    marginRight: 8,
+  },
+  reportBtnText: { color: colors.primaryDark, fontSize: 12, fontWeight: '700' },
   streakBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -253,6 +301,25 @@ const styles = StyleSheet.create({
   },
   streakFire: { fontSize: 16 },
   streakText: { color: '#D98E00', fontSize: 15, fontWeight: '700' },
+  badgeScroll: { marginBottom: spacing.md, marginHorizontal: -spacing.lg },
+  badgeContainer: {
+    paddingHorizontal: spacing.lg,
+    gap: spacing.sm,
+    flexDirection: 'row',
+  },
+  badgeChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: colors.surface,
+    borderRadius: radius.pill,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  badgeEmoji: { fontSize: 14 },
+  badgeTitle: { fontSize: 12, fontWeight: '700', color: colors.textSecondary },
   heroWrap: { alignItems: 'center', marginVertical: spacing.lg },
   heroRemaining: { fontSize: 44, fontWeight: '800', color: colors.textPrimary, letterSpacing: -1 },
   heroLabel: { fontSize: 14, fontWeight: '600', color: colors.primary, marginTop: -2 },
