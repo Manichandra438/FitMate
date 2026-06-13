@@ -112,7 +112,9 @@ function TabNavigator() {
 
 interface Props {
   user: User | null;
-  loading: boolean;
+  initializing: boolean;
+  hydrating: boolean;
+  hydrated: boolean;
   onboarded: boolean;
 }
 
@@ -134,22 +136,45 @@ const navTheme = {
   },
 };
 
-export default function AppNavigator({ user, loading, onboarded }: Props) {
+export default function AppNavigator({
+  user,
+  initializing,
+  hydrating,
+  hydrated,
+  onboarded,
+}: Props) {
   let content: React.ReactNode;
 
   // Dev bypass: Firebase not configured → skip auth gate so the whole flow
   // (onboarding included) can be tested without a Firebase project set up.
   const devBypass = !isFirebaseConfigured();
 
-  if (loading && !devBypass) {
+  // Local-first gate. Order matters:
+  // 1. Wait only for the local store to rehydrate (fast, AsyncStorage read).
+  // 2. If we already have an onboarded profile locally, render the app NOW —
+  //    Firebase auth restore + cloud sync continue in the background. This is
+  //    what makes returning users skip the multi-second auth splash.
+  // 3. No local profile yet → fall back to the auth-driven flow.
+  if (!hydrated) {
     content = <SplashScreen />;
-  } else if (!user && !devBypass) {
-    content = <LoginScreen />;
-  } else if (!onboarded) {
+  } else if (onboarded) {
+    content = <MainApp />;
+  } else if (devBypass) {
     content = <OnboardingScreen />;
+  } else if (initializing || hydrating) {
+    content = <SplashScreen />;
+  } else if (!user) {
+    content = <LoginScreen />;
   } else {
-    content = (
-      <Stack.Navigator
+    content = <OnboardingScreen />;
+  }
+
+  return <NavigationContainer theme={navTheme}>{content}</NavigationContainer>;
+}
+
+function MainApp() {
+  return (
+    <Stack.Navigator
         screenOptions={{
           headerStyle: { backgroundColor: colors.surface },
           headerTintColor: colors.textPrimary,
@@ -186,8 +211,5 @@ export default function AppNavigator({ user, loading, onboarded }: Props) {
           options={{ title: 'Edit Profile', headerBackTitle: 'Settings' }}
         />
       </Stack.Navigator>
-    );
-  }
-
-  return <NavigationContainer theme={navTheme}>{content}</NavigationContainer>;
+  );
 }

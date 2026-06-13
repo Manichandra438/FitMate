@@ -15,8 +15,21 @@ import { scheduleWidgetRefresh } from './src/widgets/updateWidget';
 export default function App() {
   const { user, initializing } = useAuth();
   const [hydrating, setHydrating] = useState(false);
+  // Persist (AsyncStorage) rehydration gate — local-first rendering depends on
+  // knowing whether the store has loaded yet, so we don't flash Login over data
+  // that is about to appear.
+  const [hydrated, setHydrated] = useState(() => useFitStore.persist.hasHydrated());
   const onboarded = useFitStore((s) => s.profile.onboarded);
   const syncedUid = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (useFitStore.persist.hasHydrated()) {
+      setHydrated(true);
+      return;
+    }
+    const unsub = useFitStore.persist.onFinishHydration(() => setHydrated(true));
+    return unsub;
+  }, []);
 
   // Start/stop the cloud sync engine on auth changes.
   useEffect(() => {
@@ -33,7 +46,10 @@ export default function App() {
     } else {
       syncedUid.current = null;
       stopSync();
-      useFitStore.getState().resetAll();
+      // Do NOT wipe local data on a null session. Losing the Firebase session
+      // (token expiry / revocation) must not destroy the user's local-first
+      // data — they'd see it flash then vanish. Explicit sign-out and account
+      // deletion in Settings handle clearing the store and AsyncStorage.
     }
   }, [user, initializing]);
 
@@ -84,7 +100,9 @@ export default function App() {
         <StatusBar style="dark" />
         <AppNavigator
           user={user}
-          loading={initializing || hydrating}
+          initializing={initializing}
+          hydrating={hydrating}
+          hydrated={hydrated}
           onboarded={onboarded}
         />
       </SafeAreaProvider>
