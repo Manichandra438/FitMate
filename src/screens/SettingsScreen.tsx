@@ -17,7 +17,7 @@ import { useFitStore } from '../store/useFitStore';
 import { cancelAllNotifications, scheduleAllNotifications } from '../services/notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { auth } from '../services/firebase';
-import { deleteAccount, signOutAll } from '../services/auth';
+import { changePassword, deleteAccount, friendlyAuthError, getAuthProvider, signOutAll } from '../services/auth';
 import { clearDirty, deleteCloudData, flush, startSync, stopSync } from '../services/sync';
 import { exportCSV, exportJSON } from '../services/export';
 import { scheduleWidgetRefresh } from '../widgets/updateWidget';
@@ -28,6 +28,7 @@ export default function SettingsScreen() {
   const { profile, mealPlan, exercisePlan, resetAll } = useFitStore();
   const [busy, setBusy] = useState<string | null>(null);
   const user = auth.currentUser;
+  const authProvider = getAuthProvider();
 
   const dietLabel =
     profile.dietPref === 'veg'
@@ -52,6 +53,33 @@ export default function SettingsScreen() {
       await scheduleAllNotifications(mealPlan, exercisePlan, profile);
       Alert.alert('Notifications', 'Notifications rescheduled successfully!');
     });
+
+  const handleChangePassword = () => {
+    let currentPw = '';
+    Alert.prompt(
+      'Current password',
+      'Enter your current password to continue.',
+      (pw) => {
+        currentPw = pw ?? '';
+        Alert.prompt(
+          'New password',
+          'Must be at least 6 characters.',
+          (newPw) => {
+            if (!newPw || newPw.length < 6) {
+              Alert.alert('Too short', 'Password must be at least 6 characters.');
+              return;
+            }
+            run('changepw', async () => {
+              await changePassword(currentPw, newPw);
+              Alert.alert('Password changed', 'Your password has been updated.');
+            });
+          },
+          'secure-text'
+        );
+      },
+      'secure-text'
+    );
+  };
 
   const handleSignOut = () => {
     Alert.alert('Sign out', 'Your data stays safely in the cloud. Sign out now?', [
@@ -110,9 +138,10 @@ export default function SettingsScreen() {
   };
 
   const handleDeleteAccount = () => {
+    const providerLabel = authProvider === 'google' ? 'Google account link and ' : '';
     Alert.alert(
       'Delete account',
-      'This permanently deletes your Google account link and ALL data from the cloud. You cannot undo this.',
+      `This permanently deletes your ${providerLabel}ALL data from the cloud. You cannot undo this.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -127,25 +156,56 @@ export default function SettingsScreen() {
                 {
                   text: 'Yes, delete forever',
                   style: 'destructive',
-                  onPress: () =>
-                    run('delete', async () => {
-                      await cancelAllNotifications();
-                      try { await flush(); } catch { /* best effort */ }
-                      stopSync(); // increments syncGeneration — kills any in-flight log fetch
-                      await clearDirty();
-                      const uid = auth.currentUser?.uid;
-                      if (uid) {
-                        try {
-                          await deleteCloudData(uid);
-                        } catch (err) {
-                          console.warn('Cloud delete failed:', err);
+                  onPress: () => {
+                    if (authProvider === 'email') {
+                      // Need password for re-auth if Firebase requires recent login
+                      Alert.prompt(
+                        'Confirm password',
+                        'Enter your password to confirm account deletion.',
+                        (pw) => {
+                          run('delete', async () => {
+                            await cancelAllNotifications();
+                            try { await flush(); } catch { /* best effort */ }
+                            stopSync();
+                            await clearDirty();
+                            const uid = auth.currentUser?.uid;
+                            const email = auth.currentUser?.email ?? '';
+                            if (uid) {
+                              try { await deleteCloudData(uid); } catch (err) {
+                                console.warn('Cloud delete failed:', err);
+                              }
+                            }
+                            try {
+                              await deleteAccount({ email, password: pw ?? '' });
+                            } catch (err: any) {
+                              throw new Error(friendlyAuthError(err));
+                            }
+                            resetAll();
+                            await AsyncStorage.removeItem('fitmate-storage');
+                            scheduleWidgetRefresh();
+                          });
+                        },
+                        'secure-text'
+                      );
+                    } else {
+                      run('delete', async () => {
+                        await cancelAllNotifications();
+                        try { await flush(); } catch { /* best effort */ }
+                        stopSync();
+                        await clearDirty();
+                        const uid = auth.currentUser?.uid;
+                        if (uid) {
+                          try { await deleteCloudData(uid); } catch (err) {
+                            console.warn('Cloud delete failed:', err);
+                          }
                         }
-                      }
-                      await deleteAccount();
-                      resetAll();
-                      await AsyncStorage.removeItem('fitmate-storage');
-                      scheduleWidgetRefresh();
-                    }),
+                        await deleteAccount();
+                        resetAll();
+                        await AsyncStorage.removeItem('fitmate-storage');
+                        scheduleWidgetRefresh();
+                      });
+                    }
+                  },
                 },
               ]
             ),
@@ -212,7 +272,9 @@ export default function SettingsScreen() {
           <Text style={styles.accountEmail}>{user?.email}</Text>
           <View style={styles.syncBadge}>
             <Ionicons name="cloud-done" size={12} color={colors.green} />
-            <Text style={styles.syncText}>Synced to Google account</Text>
+            <Text style={styles.syncText}>
+              {authProvider === 'google' ? 'Synced to Google account' : 'Synced via email account'}
+            </Text>
           </View>
         </View>
       </View>
@@ -282,6 +344,15 @@ export default function SettingsScreen() {
 
       {/* Account */}
       <SectionHeader title="Account" />
+      {authProvider === 'email' && (
+        <Row
+          icon="key"
+          label="Change password"
+          sub="Update your email account password"
+          onPress={handleChangePassword}
+          loading={busy === 'changepw'}
+        />
+      )}
       <Row
         icon="log-out"
         label="Sign out"
