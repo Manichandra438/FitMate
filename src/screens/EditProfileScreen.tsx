@@ -18,6 +18,7 @@ import { computeTargets, generatePlan } from '../services/planGenerator';
 import { flush } from '../services/sync';
 import { OptionCard, Segment } from './onboarding/inputs';
 import SectionHeader from '../components/ui/SectionHeader';
+import IFInfoModal from '../components/IFInfoModal';
 import type { ActivityLevel, DietPref, FastingProtocol, Gender, GoalPace, MealsPerDay } from '../types';
 
 // ─── Time constants ──────────────────────────────────────────────────────────
@@ -111,6 +112,7 @@ export default function EditProfileScreen() {
   const [sleepTime, setSleepTime]     = useState(profile.sleepTime);
   const [waterGoal, setWaterGoal]     = useState(profile.waterGoal);
   const [fastingProtocol, setFastingProtocol] = useState<FastingProtocol>(profile.fastingProtocol ?? 'none');
+  const [ifInfoVisible, setIfInfoVisible] = useState(false);
   const [saving, setSaving]           = useState(false);
 
   const resolvedCm = useMemo(() => {
@@ -339,7 +341,16 @@ export default function EditProfileScreen() {
           onChange={setMealsPerDay}
         />
 
-        <Label>Intermittent fasting</Label>
+        <View style={styles.ifLabelRow}>
+          <Text style={styles.label}>Intermittent fasting</Text>
+          <TouchableOpacity
+            onPress={() => setIfInfoVisible(true)}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Ionicons name="information-circle-outline" size={20} color={colors.primary} />
+          </TouchableOpacity>
+        </View>
+        <IFInfoModal visible={ifInfoVisible} onClose={() => setIfInfoVisible(false)} />
         <View style={{ gap: spacing.sm, marginBottom: spacing.sm }}>
           {IF_OPTIONS.map((o) => (
             <TouchableOpacity
@@ -669,6 +680,13 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: '#fff',
+  },
+  ifLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.md,
+    marginBottom: spacing.sm,
   },
   ifCard: {
     flexDirection: 'row',

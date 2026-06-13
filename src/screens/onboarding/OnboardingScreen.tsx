@@ -19,6 +19,7 @@ import GradientProgressBar from '../../components/ui/GradientProgressBar';
 import GradientCard from '../../components/ui/GradientCard';
 import { NumberField, OptionCard, Segment } from './inputs';
 import FadeSlideIn from '../../components/anim/FadeSlideIn';
+import IFInfoModal from '../../components/IFInfoModal';
 import {
   ActivityLevel,
   DietPref,
@@ -101,6 +102,7 @@ export default function OnboardingScreen() {
   const [mealsPerDay, setMealsPerDay] = useState<MealsPerDay>(4);
   const [goalPace, setGoalPace] = useState<GoalPace>('steady');
   const [fastingProtocol, setFastingProtocol] = useState<FastingProtocol>('none');
+  const [ifInfoVisible, setIfInfoVisible] = useState(false);
 
   // Goal date
   const [goalDateMonths, setGoalDateMonths] = useState(6);
@@ -343,8 +345,16 @@ export default function OnboardingScreen() {
               value={mealsPerDay}
               onChange={setMealsPerDay}
             />
-            <Text style={[styles.fieldLabel, { marginTop: spacing.xxl }]}>Intermittent fasting</Text>
-            <View style={{ gap: spacing.sm }}>
+            <View style={styles.ifLabelRow}>
+              <Text style={[styles.fieldLabel, { marginTop: 0, marginBottom: 0 }]}>Intermittent fasting</Text>
+              <TouchableOpacity
+                onPress={() => setIfInfoVisible(true)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Ionicons name="information-circle-outline" size={20} color={colors.primary} />
+              </TouchableOpacity>
+            </View>
+            <View style={{ gap: spacing.sm, marginTop: spacing.md }}>
               {IF_OPTIONS.map((o) => (
                 <TouchableOpacity
                   key={o.value}
@@ -631,6 +641,7 @@ export default function OnboardingScreen() {
 
   return (
     <SafeAreaView style={styles.safe}>
+      <IFInfoModal visible={ifInfoVisible} onClose={() => setIfInfoVisible(false)} />
       <View style={styles.header}>
         {step > 0 ? (
           <TouchableOpacity onPress={() => setStep(step - 1)} style={styles.backBtn}>
@@ -776,6 +787,13 @@ const styles = StyleSheet.create({
   },
   summaryLineLabel: { fontSize: 14, color: colors.textSecondary },
   summaryLineValue: { fontSize: 14, fontWeight: '700', color: colors.textPrimary },
+  ifLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.xxl,
+    marginBottom: spacing.md,
+  },
   ifCard: {
     flexDirection: 'row',
     alignItems: 'center',
