@@ -14,7 +14,7 @@ import { useFitStore } from '../store/useFitStore';
 import { cancelAllNotifications, scheduleAllNotifications } from '../services/notifications';
 import { auth } from '../services/firebase';
 import { deleteAccount, signOutAll } from '../services/auth';
-import { deleteCloudData, flush, stopSync } from '../services/sync';
+import { deleteCloudData, flush, startSync, stopSync } from '../services/sync';
 import { exportCSV, exportJSON } from '../services/export';
 import { scheduleWidgetRefresh } from '../widgets/updateWidget';
 import SectionHeader from '../components/ui/SectionHeader';
@@ -76,6 +76,7 @@ export default function SettingsScreen() {
           onPress: () =>
             run('reset', async () => {
               await cancelAllNotifications();
+              try { await flush(); } catch { /* best effort */ }
               stopSync();
               const uid = auth.currentUser?.uid;
               if (uid) {
@@ -87,7 +88,8 @@ export default function SettingsScreen() {
               }
               resetAll();
               scheduleWidgetRefresh();
-              // Router lands on onboarding because profile.onboarded is false.
+              // Restart sync so re-onboarding data flows to Firestore.
+              if (uid) startSync().catch(console.warn);
             }),
         },
       ]
@@ -97,22 +99,41 @@ export default function SettingsScreen() {
   const handleDeleteAccount = () => {
     Alert.alert(
       'Delete account',
-      'This permanently deletes your account and ALL data from the cloud. This cannot be undone.',
+      'This permanently deletes your Google account link and ALL data from the cloud. You cannot undo this.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Delete my account',
+          text: 'Continue',
           style: 'destructive',
           onPress: () =>
-            run('delete', async () => {
-              await cancelAllNotifications();
-              stopSync();
-              const uid = auth.currentUser?.uid;
-              if (uid) await deleteCloudData(uid);
-              await deleteAccount();
-              resetAll();
-              scheduleWidgetRefresh();
-            }),
+            Alert.alert(
+              'Are you absolutely sure?',
+              `Your account "${user?.email}" and every byte of data will be gone forever. No recovery possible.`,
+              [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Yes, delete forever',
+                  style: 'destructive',
+                  onPress: () =>
+                    run('delete', async () => {
+                      await cancelAllNotifications();
+                      try { await flush(); } catch { /* best effort */ }
+                      stopSync();
+                      const uid = auth.currentUser?.uid;
+                      if (uid) {
+                        try {
+                          await deleteCloudData(uid);
+                        } catch (err) {
+                          console.warn('Cloud delete failed:', err);
+                        }
+                      }
+                      await deleteAccount();
+                      resetAll();
+                      scheduleWidgetRefresh();
+                    }),
+                },
+              ]
+            ),
         },
       ]
     );
