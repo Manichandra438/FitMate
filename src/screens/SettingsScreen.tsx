@@ -61,9 +61,11 @@ export default function SettingsScreen() {
         style: 'destructive',
         onPress: () =>
           run('signout', async () => {
-            await flush(); // push any pending changes first
-            stopSync();
+            await flush();
+            stopSync(); // increments syncGeneration — kills any in-flight log fetch
             await signOutAll();
+            resetAll();
+            await AsyncStorage.removeItem('fitmate-storage');
           }),
       },
     ]);
