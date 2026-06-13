@@ -26,6 +26,9 @@ let unsubscribeNet: (() => void) | null = null;
 let appStateSub: { remove: () => void } | null = null;
 let flushing = false;
 let started = false;
+// Incremented by stopSync() — any in-flight fetchLogsInBackground with an
+// older generation is stale and must not write to the store.
+let syncGeneration = 0;
 
 async function loadQueue() {
   try {
@@ -112,8 +115,11 @@ async function fetchUserDoc(uid: string): Promise<Omit<CloudPayload, 'logs'> | n
 
 /**
  * Fetches logs subcollection in the background after UI is already shown.
+ * `generation` must match syncGeneration at write time — if stopSync() was
+ * called while this was in-flight, the generation will have advanced and the
+ * stale results are discarded instead of overwriting a reset/sign-out state.
  */
-async function fetchLogsInBackground(uid: string) {
+async function fetchLogsInBackground(uid: string, generation: number) {
   try {
     const logs: Record<string, DayLog> = {};
     const cutoff = dayjs().subtract(HYDRATE_DAYS, 'day').format('YYYY-MM-DD');
@@ -124,6 +130,8 @@ async function fetchLogsInBackground(uid: string) {
         logs[d.id] = log as DayLog;
       }
     });
+    // Abort if stopSync() was called while we were fetching.
+    if (generation !== syncGeneration) return;
     // Merge logs without overwriting any locally-queued changes.
     const currentLogs = useFitStore.getState().logs;
     const mergedLogs: Record<string, DayLog> = { ...logs };
@@ -204,6 +212,10 @@ export async function startSync(): Promise<'ready' | 'onboarding'> {
   if (started) stopSync();
   started = true;
 
+  // Capture generation AFTER stopSync() (which increments it) so the
+  // background fetch below is tied to this sync session.
+  const gen = syncGeneration;
+
   await loadQueue();
   const hadOfflineEdits = dirty.size > 0;
 
@@ -231,7 +243,7 @@ export async function startSync(): Promise<'ready' | 'onboarding'> {
         });
       }
       // Fetch logs in background — UI is already showing.
-      void fetchLogsInBackground(uid);
+      void fetchLogsInBackground(uid, gen);
     } else if (local.profile.onboarded) {
       // Existing local user, first cloud sync — push everything up.
       await pushAll(uid);
@@ -278,6 +290,7 @@ export async function startSync(): Promise<'ready' | 'onboarding'> {
 }
 
 export function stopSync() {
+  syncGeneration++; // invalidate any in-flight fetchLogsInBackground
   unsubscribeStore?.();
   unsubscribeStore = null;
   unsubscribeNet?.();

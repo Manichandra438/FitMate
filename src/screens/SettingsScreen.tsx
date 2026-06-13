@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors, radius, spacing } from '../theme';
 import { useFitStore } from '../store/useFitStore';
 import { cancelAllNotifications, scheduleAllNotifications } from '../services/notifications';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { auth } from '../services/firebase';
 import { deleteAccount, signOutAll } from '../services/auth';
 import { deleteCloudData, flush, startSync, stopSync } from '../services/sync';
@@ -81,19 +82,24 @@ export default function SettingsScreen() {
             run('reset', async () => {
               await cancelAllNotifications();
               try { await flush(); } catch { /* best effort */ }
-              stopSync();
+              stopSync(); // increments syncGeneration — kills any in-flight log fetch
               const uid = auth.currentUser?.uid;
+              let cloudDeleted = false;
               if (uid) {
                 try {
                   await deleteCloudData(uid);
+                  cloudDeleted = true;
                 } catch (err) {
                   console.warn('Cloud wipe failed (continuing local reset):', err);
                 }
               }
               resetAll();
+              // Wipe AsyncStorage directly so the persist layer has no stale snapshot.
+              await AsyncStorage.removeItem('fitmate-storage');
               scheduleWidgetRefresh();
-              // Restart sync so re-onboarding data flows to Firestore.
-              if (uid) startSync().catch(console.warn);
+              // Only restart sync if cloud was actually cleared — otherwise
+              // startSync would re-download the old data and undo the reset.
+              if (uid && cloudDeleted) startSync().catch(console.warn);
             }),
         },
       ]
@@ -122,7 +128,7 @@ export default function SettingsScreen() {
                     run('delete', async () => {
                       await cancelAllNotifications();
                       try { await flush(); } catch { /* best effort */ }
-                      stopSync();
+                      stopSync(); // increments syncGeneration — kills any in-flight log fetch
                       const uid = auth.currentUser?.uid;
                       if (uid) {
                         try {
@@ -133,6 +139,7 @@ export default function SettingsScreen() {
                       }
                       await deleteAccount();
                       resetAll();
+                      await AsyncStorage.removeItem('fitmate-storage');
                       scheduleWidgetRefresh();
                     }),
                 },
