@@ -86,6 +86,7 @@ export interface UserProfile {
   wakeTime: string; // "07:00"
   sleepTime: string; // "23:00"
   onboarded: boolean;
+  goalDate?: string; // user-chosen target date YYYY-MM-DD
 }
 
 export interface OnboardingAnswers {
@@ -102,6 +103,7 @@ export interface OnboardingAnswers {
   wakeTime: string;
   sleepTime: string;
   waterGoal: number;
+  goalDate?: string; // user-chosen target date YYYY-MM-DD
 }
 
 export interface PlanTargets {

@@ -127,6 +127,7 @@ export const useFitStore = create<FitState>()(
             waterGoal: answers.waterGoal,
             wakeTime: answers.wakeTime,
             sleepTime: answers.sleepTime,
+            goalDate: answers.goalDate ?? targets.goalDate ?? undefined,
             onboarded: true,
           },
           mealPlan,

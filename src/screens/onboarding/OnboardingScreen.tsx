@@ -32,7 +32,7 @@ import { useFitStore } from '../../store/useFitStore';
 import { scheduleAllNotifications } from '../../services/notifications';
 import { scheduleWidgetRefresh } from '../../widgets/updateWidget';
 
-const TOTAL_STEPS = 10;
+const TOTAL_STEPS = 11;
 
 const ACTIVITY_OPTIONS: { value: ActivityLevel; title: string; subtitle: string; emoji: string }[] = [
   { value: 'sedentary', title: 'Sedentary', subtitle: 'Desk job, little exercise', emoji: '🪑' },
@@ -54,8 +54,23 @@ const PACE_OPTIONS: { value: GoalPace; title: string; subtitle: string; emoji: s
   { value: 'aggressive', title: 'Aggressive', subtitle: '~0.75 kg per week', emoji: '🚀' },
 ];
 
-const WAKE_TIMES = ['05:00', '05:30', '06:00', '06:30', '07:00', '07:30', '08:00', '08:30', '09:00'];
-const SLEEP_TIMES = ['21:00', '21:30', '22:00', '22:30', '23:00', '23:30', '00:00'];
+const WAKE_TIMES = [
+  '04:00','04:30','05:00','05:30','06:00','06:30',
+  '07:00','07:30','08:00','08:30','09:00','09:30',
+  '10:00','10:30','11:00',
+];
+const SLEEP_TIMES = [
+  '20:00','20:30','21:00','21:30','22:00','22:30',
+  '23:00','23:30','00:00','00:30','01:00','01:30','02:00',
+];
+const GOAL_PRESETS = [1, 2, 3, 6, 12, 18, 24];
+
+const fmt12 = (t: string) => {
+  const [hh, mm] = t.split(':').map(Number);
+  const ampm = hh < 12 ? 'AM' : 'PM';
+  const h12 = hh === 0 ? 12 : hh > 12 ? hh - 12 : hh;
+  return `${h12}:${mm.toString().padStart(2, '0')} ${ampm}`;
+};
 
 export default function OnboardingScreen() {
   const completeOnboarding = useFitStore((s) => s.completeOnboarding);
@@ -64,28 +79,45 @@ export default function OnboardingScreen() {
   const [name, setName] = useState('');
   const [age, setAge] = useState('25');
   const [gender, setGender] = useState<Gender>('male');
-  const [height, setHeight] = useState('');
+
+  // Height
+  const [heightUnit, setHeightUnit] = useState<'cm' | 'ft'>('cm');
+  const [height, setHeight] = useState('');   // cm value
+  const [heightFt, setHeightFt] = useState('');
+  const [heightIn, setHeightIn] = useState('');
+
   const [currentWeight, setCurrentWeight] = useState('');
   const [goalWeight, setGoalWeight] = useState('');
   const [activityLevel, setActivityLevel] = useState<ActivityLevel>('light');
   const [dietPref, setDietPref] = useState<DietPref>('nonveg');
   const [mealsPerDay, setMealsPerDay] = useState<MealsPerDay>(4);
   const [goalPace, setGoalPace] = useState<GoalPace>('steady');
+
+  // Goal date
+  const [goalDateMonths, setGoalDateMonths] = useState(6);
+  const [goalDateChoice, setGoalDateChoice] = useState<'user' | 'app'>('app');
+
   const [wakeTime, setWakeTime] = useState('07:00');
   const [sleepTime, setSleepTime] = useState('23:00');
   const [waterGoal, setWaterGoal] = useState<number | null>(null);
 
+  const heightCm = useMemo(() => {
+    if (heightUnit === 'cm') return parseFloat(height) || 0;
+    const ft = parseInt(heightFt || '0', 10);
+    const inches = parseInt(heightIn || '0', 10);
+    return Math.round((ft * 12 + inches) * 2.54 * 10) / 10;
+  }, [heightUnit, height, heightFt, heightIn]);
+
   const answers: OnboardingAnswers | null = useMemo(() => {
     const a = parseInt(age, 10);
-    const h = parseFloat(height);
     const cw = parseFloat(currentWeight);
     const gw = parseFloat(goalWeight);
-    if (!a || !h || !cw || !gw) return null;
+    if (!a || !heightCm || !cw || !gw) return null;
     const base: OnboardingAnswers = {
       name: name.trim() || 'Friend',
       age: a,
       gender,
-      heightCm: h,
+      heightCm,
       currentWeight: cw,
       goalWeight: gw,
       activityLevel,
@@ -99,9 +131,36 @@ export default function OnboardingScreen() {
     const targets = computeTargets(base);
     base.waterGoal = waterGoal ?? targets.waterGoal;
     return base;
-  }, [name, age, gender, height, currentWeight, goalWeight, activityLevel, dietPref, mealsPerDay, goalPace, wakeTime, sleepTime, waterGoal]);
+  }, [name, age, gender, heightCm, currentWeight, goalWeight, activityLevel, dietPref, mealsPerDay, goalPace, wakeTime, sleepTime, waterGoal]);
 
   const targets = useMemo(() => (answers ? computeTargets(answers) : null), [answers]);
+
+  // Goal date calculations
+  const weightDiff = useMemo(() => {
+    const cw = parseFloat(currentWeight);
+    const gw = parseFloat(goalWeight);
+    return isNaN(cw) || isNaN(gw) ? 0 : Math.abs(cw - gw);
+  }, [currentWeight, goalWeight]);
+
+  const userTargetDate = useMemo(() => dayjs().add(goalDateMonths, 'month'), [goalDateMonths]);
+  const userWeeklyRate = useMemo(() => {
+    const weeks = goalDateMonths * 4.33;
+    return weeks > 0 ? weightDiff / weeks : 0;
+  }, [goalDateMonths, weightDiff]);
+  const riskLevel = useMemo(
+    () => (userWeeklyRate > 1.0 ? 'high' : userWeeklyRate > 0.5 ? 'moderate' : 'safe'),
+    [userWeeklyRate]
+  );
+
+  const appTargetDate = useMemo(
+    () => (targets?.goalDate ? dayjs(targets.goalDate) : dayjs().add(6, 'month')),
+    [targets]
+  );
+
+  const chosenGoalDate = useMemo(
+    () => (goalDateChoice === 'user' ? userTargetDate : appTargetDate).format('YYYY-MM-DD'),
+    [goalDateChoice, userTargetDate, appTargetDate]
+  );
 
   const canContinue = (): boolean => {
     switch (step) {
@@ -110,10 +169,7 @@ export default function OnboardingScreen() {
         const a = parseInt(age, 10);
         return a >= 13 && a <= 100;
       }
-      case 2: {
-        const h = parseFloat(height);
-        return h >= 100 && h <= 250;
-      }
+      case 2: return heightCm >= 100 && heightCm <= 250;
       case 3: {
         const w = parseFloat(currentWeight);
         return w >= 30 && w <= 300;
@@ -131,15 +187,15 @@ export default function OnboardingScreen() {
       Alert.alert('Missing info', 'Please fill in all the questions first.');
       return;
     }
-    completeOnboarding(answers);
+    completeOnboarding({ ...answers, goalDate: chosenGoalDate });
     const { mealPlan, exercisePlan, profile } = useFitStore.getState();
     scheduleAllNotifications(mealPlan, exercisePlan, profile).catch(console.warn);
     scheduleWidgetRefresh();
-    // Routing flips to the main app automatically (profile.onboarded === true).
   };
 
   const renderStep = () => {
     switch (step) {
+      // ── Step 0: Name ──────────────────────────────────────────────────────
       case 0:
         return (
           <StepWrap title="What's your name?" subtitle="So we know what to call you.">
@@ -154,6 +210,8 @@ export default function OnboardingScreen() {
             />
           </StepWrap>
         );
+
+      // ── Step 1: Age / Gender ──────────────────────────────────────────────
       case 1:
         return (
           <StepWrap title="About you" subtitle="Used to calculate your daily calorie needs.">
@@ -171,18 +229,48 @@ export default function OnboardingScreen() {
             />
           </StepWrap>
         );
+
+      // ── Step 2: Height (cm OR ft/in) ──────────────────────────────────────
       case 2:
         return (
           <StepWrap title="How tall are you?" subtitle="Height drives the calorie formula.">
-            <NumberField value={height} onChange={setHeight} unit="cm" placeholder="170" autoFocus />
+            <Segment
+              options={[
+                { value: 'cm', label: 'cm' },
+                { value: 'ft', label: 'ft / in' },
+              ]}
+              value={heightUnit}
+              onChange={(v) => { setHeightUnit(v as 'cm' | 'ft'); setHeight(''); setHeightFt(''); setHeightIn(''); }}
+            />
+            <View style={{ marginTop: spacing.xl }}>
+              {heightUnit === 'cm' ? (
+                <NumberField value={height} onChange={setHeight} unit="cm" placeholder="170" autoFocus />
+              ) : (
+                <View style={styles.ftRow}>
+                  <View style={styles.ftField}>
+                    <NumberField value={heightFt} onChange={setHeightFt} unit="ft" placeholder="5" autoFocus />
+                  </View>
+                  <View style={styles.ftField}>
+                    <NumberField value={heightIn} onChange={setHeightIn} unit="in" placeholder="7" />
+                  </View>
+                </View>
+              )}
+            </View>
+            {heightCm > 0 && heightUnit === 'ft' && (
+              <Text style={styles.hint}>{heightCm} cm</Text>
+            )}
           </StepWrap>
         );
+
+      // ── Step 3: Current weight ─────────────────────────────────────────────
       case 3:
         return (
           <StepWrap title="Current weight" subtitle="Your starting point.">
             <NumberField value={currentWeight} onChange={setCurrentWeight} unit="kg" placeholder="80" autoFocus />
           </StepWrap>
         );
+
+      // ── Step 4: Goal weight ────────────────────────────────────────────────
       case 4:
         return (
           <StepWrap title="Goal weight" subtitle="Where do you want to be?">
@@ -198,6 +286,8 @@ export default function OnboardingScreen() {
             )}
           </StepWrap>
         );
+
+      // ── Step 5: Activity ───────────────────────────────────────────────────
       case 5:
         return (
           <StepWrap title="Activity level" subtitle="How active is a normal week?">
@@ -215,6 +305,8 @@ export default function OnboardingScreen() {
             </View>
           </StepWrap>
         );
+
+      // ── Step 6: Diet / meals ───────────────────────────────────────────────
       case 6:
         return (
           <StepWrap title="Food preferences" subtitle="Your meal plan is built around this.">
@@ -243,6 +335,8 @@ export default function OnboardingScreen() {
             />
           </StepWrap>
         );
+
+      // ── Step 7: Pace ───────────────────────────────────────────────────────
       case 7: {
         const maintaining = answers
           ? Math.abs(answers.goalWeight - answers.currentWeight) < 2
@@ -283,7 +377,104 @@ export default function OnboardingScreen() {
           </StepWrap>
         );
       }
-      case 8:
+
+      // ── Step 8: Goal date (NEW) ────────────────────────────────────────────
+      case 8: {
+        const maintaining = weightDiff < 2;
+        if (maintaining) {
+          return (
+            <StepWrap title="Goal timeline" subtitle="You're maintaining weight — no specific date needed.">
+              <Text style={styles.hint}>Continue to set up your daily schedule.</Text>
+            </StepWrap>
+          );
+        }
+        return (
+          <StepWrap
+            title="When's your goal date?"
+            subtitle="Set a target date to stay motivated."
+          >
+            {/* Quick presets */}
+            <Text style={styles.fieldLabel}>Quick pick</Text>
+            <View style={styles.timeRow}>
+              {GOAL_PRESETS.map((m) => (
+                <TouchableOpacity
+                  key={m}
+                  style={[styles.timeChip, goalDateMonths === m && styles.timeChipSelected]}
+                  onPress={() => setGoalDateMonths(m)}
+                >
+                  <Text style={[styles.timeChipText, goalDateMonths === m && styles.timeChipTextSelected]}>
+                    {m < 12 ? `${m} mo` : `${m / 12} yr`}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* Month stepper */}
+            <View style={[styles.waterRow, { marginTop: spacing.lg }]}>
+              <TouchableOpacity
+                style={styles.waterBtn}
+                onPress={() => setGoalDateMonths((m) => Math.max(1, m - 1))}
+              >
+                <Ionicons name="remove" size={22} color={colors.textPrimary} />
+              </TouchableOpacity>
+              <View style={{ alignItems: 'center', minWidth: 80 }}>
+                <Text style={styles.waterValue}>{goalDateMonths}</Text>
+                <Text style={{ color: colors.textSecondary, fontSize: 13, fontWeight: '600' }}>months</Text>
+                <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 2 }}>
+                  by {userTargetDate.format('D MMM YYYY')}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={styles.waterBtn}
+                onPress={() => setGoalDateMonths((m) => Math.min(36, m + 1))}
+              >
+                <Ionicons name="add" size={22} color={colors.textPrimary} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Risk assessment */}
+            {weightDiff > 0 && riskLevel !== 'safe' && (
+              <GradientCard style={{ marginTop: spacing.lg }}>
+                <Text style={[styles.riskTitle, { color: riskLevel === 'high' ? colors.red : '#D98E00' }]}>
+                  {riskLevel === 'high' ? '🚨 High risk pace' : '⚠️ Moderate pace'}
+                </Text>
+                <Text style={styles.riskBody}>
+                  Needs {userWeeklyRate.toFixed(2)} kg/week — safe limit is 0.5 kg/week
+                </Text>
+                {riskLevel === 'high' && (
+                  <View style={{ marginTop: spacing.sm, gap: 3 }}>
+                    {['Significant muscle loss', 'Nutritional deficiencies', 'Metabolic slowdown', 'Risk of gallstones', 'Chronic fatigue & weakness'].map((r) => (
+                      <Text key={r} style={styles.riskBullet}>• {r}</Text>
+                    ))}
+                  </View>
+                )}
+              </GradientCard>
+            )}
+
+            {/* Two-choice cards */}
+            <Text style={[styles.fieldLabel, { marginTop: spacing.xl }]}>Choose your target</Text>
+            <View style={styles.optionList}>
+              <OptionCard
+                title={`My date: ${userTargetDate.format('D MMM YYYY')}`}
+                subtitle={weightDiff > 0 ? `${userWeeklyRate.toFixed(2)} kg/week needed` : 'Your chosen timeline'}
+                emoji={riskLevel === 'high' ? '🚨' : riskLevel === 'moderate' ? '⚠️' : '🎯'}
+                selected={goalDateChoice === 'user'}
+                onPress={() => setGoalDateChoice('user')}
+              />
+              <OptionCard
+                title={`App recommends: ${appTargetDate.format('D MMM YYYY')}`}
+                subtitle={`${PACE_KG_PER_WEEK[goalPace]} kg/week · safe & sustainable`}
+                emoji="✅"
+                selected={goalDateChoice === 'app'}
+                onPress={() => setGoalDateChoice('app')}
+              />
+            </View>
+          </StepWrap>
+        );
+      }
+
+      // ── Step 9: Your day ───────────────────────────────────────────────────
+      case 9:
         return (
           <StepWrap title="Your day" subtitle="Meal times and reminders follow your schedule.">
             <Text style={styles.fieldLabel}>I usually wake up at</Text>
@@ -295,11 +486,12 @@ export default function OnboardingScreen() {
                   onPress={() => setWakeTime(t)}
                 >
                   <Text style={[styles.timeChipText, wakeTime === t && styles.timeChipTextSelected]}>
-                    {t}
+                    {fmt12(t)}
                   </Text>
                 </TouchableOpacity>
               ))}
             </View>
+
             <Text style={[styles.fieldLabel, { marginTop: spacing.xl }]}>I usually sleep at</Text>
             <View style={styles.timeRow}>
               {SLEEP_TIMES.map((t) => (
@@ -309,25 +501,30 @@ export default function OnboardingScreen() {
                   onPress={() => setSleepTime(t)}
                 >
                   <Text style={[styles.timeChipText, sleepTime === t && styles.timeChipTextSelected]}>
-                    {t}
+                    {fmt12(t)}
                   </Text>
                 </TouchableOpacity>
               ))}
             </View>
+
             <Text style={[styles.fieldLabel, { marginTop: spacing.xl }]}>
-              Daily water goal (glasses of 250 ml)
+              Daily water goal
             </Text>
             <View style={styles.waterRow}>
               <TouchableOpacity
                 style={styles.waterBtn}
-                onPress={() => setWaterGoal(Math.max((waterGoal ?? targets?.waterGoal ?? 8) - 1, 4))}
+                onPress={() => setWaterGoal((v) => Math.max((v ?? targets?.waterGoal ?? 8) - 1, 4))}
               >
                 <Ionicons name="remove" size={22} color={colors.textPrimary} />
               </TouchableOpacity>
-              <Text style={styles.waterValue}>{waterGoal ?? targets?.waterGoal ?? 8}</Text>
+              <View style={{ alignItems: 'center' }}>
+                <Text style={styles.waterValue}>{waterGoal ?? targets?.waterGoal ?? 8}</Text>
+                <Text style={{ color: colors.textSecondary, fontSize: 13, fontWeight: '600' }}>glasses</Text>
+                <Text style={{ color: colors.textMuted, fontSize: 12 }}>× 250 ml each</Text>
+              </View>
               <TouchableOpacity
                 style={styles.waterBtn}
-                onPress={() => setWaterGoal(Math.min((waterGoal ?? targets?.waterGoal ?? 8) + 1, 16))}
+                onPress={() => setWaterGoal((v) => Math.min((v ?? targets?.waterGoal ?? 8) + 1, 20))}
               >
                 <Ionicons name="add" size={22} color={colors.textPrimary} />
               </TouchableOpacity>
@@ -337,7 +534,9 @@ export default function OnboardingScreen() {
             </Text>
           </StepWrap>
         );
-      case 9:
+
+      // ── Step 10: Summary ───────────────────────────────────────────────────
+      case 10:
         return (
           <StepWrap title={`You're all set, ${name.trim() || 'Friend'}!`} subtitle="Here's your personalized plan.">
             {targets && answers && (
@@ -356,26 +555,32 @@ export default function OnboardingScreen() {
                     label="Daily adjustment"
                     value={`${targets.dailyDelta > 0 ? '+' : ''}${targets.dailyDelta} kcal`}
                   />
-                  {targets.goalDate && (
-                    <SummaryLine
-                      label={`Goal of ${answers.goalWeight} kg`}
-                      value={`~ ${dayjs(targets.goalDate).format('D MMM YYYY')}`}
-                    />
-                  )}
+                  <SummaryLine
+                    label={`Goal of ${answers.goalWeight} kg by`}
+                    value={dayjs(chosenGoalDate).format('D MMM YYYY')}
+                  />
                   <SummaryLine
                     label="Meal plan"
                     value={`${answers.mealsPerDay} meals · ${DIET_OPTIONS.find((d) => d.value === answers.dietPref)?.title}`}
                   />
+                  <SummaryLine label="Wake up" value={fmt12(wakeTime)} />
+                  <SummaryLine label="Sleep" value={fmt12(sleepTime)} />
                 </GradientCard>
                 {targets.paceAdjusted && (
                   <Text style={styles.warn}>
                     ⚠️ Your pace was adjusted to keep calories at a safe minimum.
                   </Text>
                 )}
+                {goalDateChoice === 'user' && riskLevel !== 'safe' && (
+                  <Text style={styles.warn}>
+                    {riskLevel === 'high' ? '🚨' : '⚠️'} Your goal date is aggressive — the app will still keep your daily calories safe.
+                  </Text>
+                )}
               </View>
             )}
           </StepWrap>
         );
+
       default:
         return null;
     }
@@ -484,9 +689,11 @@ const styles = StyleSheet.create({
   optionList: { gap: spacing.md },
   hint: { fontSize: 14, color: colors.primary, marginTop: spacing.lg, textAlign: 'center', fontWeight: '600' },
   warn: { fontSize: 13, color: '#D98E00', marginTop: spacing.lg, textAlign: 'center' },
+  ftRow: { flexDirection: 'row', gap: spacing.xl, justifyContent: 'center' },
+  ftField: { flex: 1, alignItems: 'center' },
   timeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   timeChip: {
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
     paddingVertical: 9,
     borderRadius: radius.pill,
     borderWidth: 1,
@@ -494,7 +701,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceHigh,
   },
   timeChipSelected: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
-  timeChipText: { fontSize: 14, fontWeight: '600', color: colors.textSecondary },
+  timeChipText: { fontSize: 13, fontWeight: '600', color: colors.textSecondary },
   timeChipTextSelected: { color: colors.primaryDark },
   waterRow: {
     flexDirection: 'row',
@@ -513,6 +720,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   waterValue: { fontSize: 40, fontWeight: '800', color: colors.textPrimary, minWidth: 64, textAlign: 'center' },
+  riskTitle: { fontSize: 15, fontWeight: '800', marginBottom: 4 },
+  riskBody: { fontSize: 13, color: colors.textSecondary },
+  riskBullet: { fontSize: 12, color: colors.textSecondary },
   summaryRow: { flexDirection: 'row', justifyContent: 'space-around' },
   summaryStat: { alignItems: 'center' },
   summaryValue: { fontSize: 26, fontWeight: '800', color: colors.textPrimary },
