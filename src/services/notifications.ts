@@ -164,7 +164,7 @@ export async function scheduleExerciseReminder(
 
   for (const [dayNum, dayKey] of Object.entries(dayMap)) {
     const exercise = exercisePlan[dayKey as keyof ExercisePlan];
-    if (exercise.isRest) continue;
+    if (!exercise || exercise.isRest) continue;
 
     await Notifications.scheduleNotificationAsync({
       identifier: `exercise_${dayKey}`,

@@ -305,7 +305,7 @@ export const useFitStore = create<FitState>()(
                 done: true,
                 skipped: false,
                 duration,
-                activityName: exercise.activity,
+                activityName: exercise?.activity,
               },
             },
           },

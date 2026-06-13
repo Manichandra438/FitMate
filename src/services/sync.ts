@@ -11,8 +11,9 @@ import {
   writeBatch,
 } from 'firebase/firestore';
 import { auth, db } from './firebase';
-import { CloudPayload, useFitStore } from '../store/useFitStore';
+import { CloudPayload, DEFAULT_PROFILE, useFitStore } from '../store/useFitStore';
 import { DayLog } from '../types';
+import { DEFAULT_EXERCISE_PLAN } from '../data/exercisePlan';
 
 const QUEUE_KEY = 'fitmate-sync-queue';
 const DEBOUNCE_MS = 2000;
@@ -106,9 +107,9 @@ async function fetchUserDoc(uid: string): Promise<Omit<CloudPayload, 'logs'> | n
   if (!userSnap.exists()) return null;
   const data = userSnap.data();
   return {
-    profile: data.profile,
+    profile: data.profile ?? DEFAULT_PROFILE,
     mealPlan: data.mealPlan ?? [],
-    exercisePlan: data.exercisePlan,
+    exercisePlan: data.exercisePlan ?? DEFAULT_EXERCISE_PLAN,
     weightHistory: data.weightHistory ?? [],
   };
 }
@@ -132,13 +133,15 @@ async function fetchLogsInBackground(uid: string, generation: number) {
     });
     // Abort if stopSync() was called while we were fetching.
     if (generation !== syncGeneration) return;
-    // Merge logs without overwriting any locally-queued changes.
-    const currentLogs = useFitStore.getState().logs;
-    const mergedLogs: Record<string, DayLog> = { ...logs };
-    for (const date of Object.keys(currentLogs)) {
-      if (dirty.has(`log:${date}`)) mergedLogs[date] = currentLogs[date];
-    }
-    useFitStore.setState((s) => ({ logs: { ...mergedLogs, ...s.logs } }));
+    // Cloud is the base. Dirty local logs (edits made while fetch was in-flight)
+    // override cloud. Non-dirty local logs do NOT override — cloud is authoritative.
+    useFitStore.setState((s) => {
+      const merged: Record<string, DayLog> = { ...logs };
+      for (const date of Object.keys(s.logs)) {
+        if (dirty.has(`log:${date}`)) merged[date] = s.logs[date];
+      }
+      return { logs: merged };
+    });
   } catch (err) {
     console.warn('Background log fetch failed:', err);
   }
@@ -164,9 +167,9 @@ export async function fetchCloud(uid: string): Promise<CloudPayload | null> {
   });
 
   return {
-    profile: data.profile,
+    profile: data.profile ?? DEFAULT_PROFILE,
     mealPlan: data.mealPlan ?? [],
-    exercisePlan: data.exercisePlan,
+    exercisePlan: data.exercisePlan ?? DEFAULT_EXERCISE_PLAN,
     weightHistory: data.weightHistory ?? [],
     logs,
   };

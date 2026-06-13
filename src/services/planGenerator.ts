@@ -241,9 +241,13 @@ export function generateMealPlan(
     const candidates = MEAL_TEMPLATES.filter(
       (t) => t.slot === slot.slot && t.dietPref.includes(answers.dietPref)
     );
-    // Prefer an unused template so repeated snack slots vary.
+    // Fall back to any template for this slot if none match the diet preference.
+    const pool = candidates.length
+      ? candidates
+      : MEAL_TEMPLATES.filter((t) => t.slot === slot.slot);
     const template =
-      candidates.find((t) => !usedTemplates.has(t.name)) ?? candidates[0];
+      pool.find((t) => !usedTemplates.has(t.name)) ?? pool[0];
+    if (!template) throw new Error(`No meal template found for slot: ${slot.slot}`);
     usedTemplates.add(template.name);
     chosenTemplates[i] = template;
 

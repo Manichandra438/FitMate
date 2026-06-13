@@ -20,7 +20,7 @@ export function computeStreak(logs: Record<string, DayLog>): number {
       break;
     }
     const hasActivity =
-      log.meals.some((m) => m.logged) || log.exercise.done || log.water > 0;
+      log.meals.some((m) => m.logged) || log.exercise?.done || log.water > 0;
     if (hasActivity) {
       streak++;
     } else if (i > 0) {
