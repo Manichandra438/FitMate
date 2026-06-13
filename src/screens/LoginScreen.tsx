@@ -37,13 +37,12 @@ export default function LoginScreen() {
   };
 
   return (
-    <View style={styles.container}>
-      <LinearGradient
-        colors={gradients.header}
-        style={StyleSheet.absoluteFill}
-        start={{ x: 0.5, y: 0 }}
-        end={{ x: 0.5, y: 0.7 }}
-      />
+    <LinearGradient
+      colors={gradients.header}
+      style={styles.container}
+      start={{ x: 0.5, y: 0 }}
+      end={{ x: 0.5, y: 0.7 }}
+    >
       <SafeAreaView style={styles.safe}>
         <View style={styles.hero}>
           <View style={styles.logoBadge}>
@@ -78,12 +77,12 @@ export default function LoginScreen() {
           </Text>
         </View>
       </SafeAreaView>
-    </View>
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg },
+  container: { flex: 1 },
   safe: { flex: 1, padding: spacing.xl, justifyContent: 'space-between' },
   hero: { alignItems: 'center', marginTop: 80 },
   logoBadge: {

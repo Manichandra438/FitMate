@@ -30,17 +30,23 @@ export default function ScreenContainer({
     <View style={[styles.content, { flex: 1 }, style]}>{children}</View>
   );
 
+  if (headerGradient) {
+    return (
+      <LinearGradient
+        colors={gradients.header}
+        style={styles.safe}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 0.45 }}
+      >
+        <SafeAreaView style={{ flex: 1 }} edges={edges}>
+          {content}
+        </SafeAreaView>
+      </LinearGradient>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.safe} edges={edges}>
-      {headerGradient && (
-        <LinearGradient
-          colors={gradients.header}
-          style={StyleSheet.absoluteFill}
-          start={{ x: 0.5, y: 0 }}
-          end={{ x: 0.5, y: 0.45 }}
-          pointerEvents="none"
-        />
-      )}
       {content}
     </SafeAreaView>
   );
