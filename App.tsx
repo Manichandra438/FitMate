@@ -31,6 +31,7 @@ export default function App() {
     } else {
       syncedUid.current = null;
       stopSync();
+      useFitStore.getState().resetAll();
     }
   }, [user, initializing]);
 
