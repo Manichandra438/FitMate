@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -16,6 +16,7 @@ import { colors, radius, spacing } from '../theme';
 import { useFitStore } from '../store/useFitStore';
 import { cancelAllNotifications, scheduleAllNotifications } from '../services/notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '../services/firebase';
 import { changePassword, deleteAccount, friendlyAuthError, getAuthProvider, signOutAll } from '../services/auth';
 import { clearDirty, deleteCloudData, flush, startSync, stopSync } from '../services/sync';
@@ -27,8 +28,15 @@ export default function SettingsScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { profile, mealPlan, exercisePlan, resetAll } = useFitStore();
   const [busy, setBusy] = useState<string | null>(null);
+  const [authProvider, setAuthProvider] = useState(() => getAuthProvider());
   const user = auth.currentUser;
-  const authProvider = getAuthProvider();
+
+  // Re-derive provider reactively — auth.currentUser may be null on first
+  // render when Firebase is still restoring the session.
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, () => setAuthProvider(getAuthProvider()));
+    return unsub;
+  }, []);
 
   const dietLabel =
     profile.dietPref === 'veg'
