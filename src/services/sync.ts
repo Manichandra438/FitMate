@@ -229,8 +229,10 @@ export async function startSync(): Promise<'ready' | 'onboarding'> {
     const local = useFitStore.getState();
 
     if (cloud && cloud.profile?.onboarded) {
-      if (hadOfflineEdits && dirty.has('user')) {
+      if (hadOfflineEdits && dirty.has('user') && local.profile.onboarded) {
         // Keep local user doc (newer), take cloud for everything else.
+        // Guard: only prefer local if it's a real onboarded profile —
+        // a reset DEFAULT_PROFILE must never override valid cloud data.
         useFitStore.setState({
           mealPlan: local.mealPlan,
           exercisePlan: local.exercisePlan,
@@ -303,6 +305,16 @@ export function stopSync() {
   if (debounceTimer) clearTimeout(debounceTimer);
   debounceTimer = null;
   started = false;
+}
+
+/**
+ * Clears the in-memory dirty set and removes the persisted queue from
+ * AsyncStorage. Call on sign-out / account deletion so stale dirty keys
+ * from the previous session cannot override fresh cloud data on next login.
+ */
+export async function clearDirty(): Promise<void> {
+  dirty.clear();
+  try { await AsyncStorage.removeItem(QUEUE_KEY); } catch {}
 }
 
 /** Deletes every cloud doc for the user. Used by reset and account deletion. */

@@ -18,7 +18,7 @@ import { cancelAllNotifications, scheduleAllNotifications } from '../services/no
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { auth } from '../services/firebase';
 import { deleteAccount, signOutAll } from '../services/auth';
-import { deleteCloudData, flush, startSync, stopSync } from '../services/sync';
+import { clearDirty, deleteCloudData, flush, startSync, stopSync } from '../services/sync';
 import { exportCSV, exportJSON } from '../services/export';
 import { scheduleWidgetRefresh } from '../widgets/updateWidget';
 import SectionHeader from '../components/ui/SectionHeader';
@@ -63,6 +63,7 @@ export default function SettingsScreen() {
           run('signout', async () => {
             await flush();
             stopSync(); // increments syncGeneration — kills any in-flight log fetch
+            await clearDirty();
             await signOutAll();
             resetAll();
             await AsyncStorage.removeItem('fitmate-storage');
@@ -131,6 +132,7 @@ export default function SettingsScreen() {
                       await cancelAllNotifications();
                       try { await flush(); } catch { /* best effort */ }
                       stopSync(); // increments syncGeneration — kills any in-flight log fetch
+                      await clearDirty();
                       const uid = auth.currentUser?.uid;
                       if (uid) {
                         try {
