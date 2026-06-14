@@ -41,6 +41,9 @@ GoogleService-Info.plist
 # typescript
 *.tsbuildinfo
 
+# screenshot dumps from emulator testing
+/*.png
+
 # generated native folders
 /ios
 /android

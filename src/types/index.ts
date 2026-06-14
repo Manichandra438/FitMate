@@ -6,8 +6,11 @@ export interface FoodItem {
   grams: number;
   kcalPer100g: number;
   proteinPer100g: number;
+  carbsPer100g?: number;
+  fatPer100g?: number;
   kcal: number;
   protein: number;
+  isCustom?: boolean;
 }
 
 export interface Meal {
@@ -36,6 +39,24 @@ export interface ExerciseLog {
   activityName?: string;
 }
 
+export interface QuickAdd {
+  id: string;
+  label?: string;
+  kcal: number;
+  protein: number;
+  addedAt: string;
+}
+
+export interface BodyMeasurement {
+  date: string;
+  waist?: number;
+  chest?: number;
+  hips?: number;
+  arms?: number;
+  thighs?: number;
+  bodyFat?: number;
+}
+
 export interface DayLog {
   date: string;
   wakeUpTime?: string;
@@ -43,6 +64,8 @@ export interface DayLog {
   water: number;
   exercise: ExerciseLog;
   weight?: number;
+  quickAdds?: QuickAdd[];
+  steps?: number;
 }
 
 export interface DayExercise {
@@ -139,6 +162,14 @@ export interface MealTemplate {
   foods: TemplateFood[];
 }
 
+export interface NotifPrefs {
+  meals: boolean;
+  water: boolean;
+  weight: boolean;
+  exercise: boolean;
+  smartNudges: boolean;
+}
+
 export interface WeightEntry {
   date: string;
   weight: number;
@@ -148,9 +179,12 @@ export interface NutritionixFood {
   food_name: string;
   nf_calories: number;
   nf_protein: number;
+  nf_total_carbohydrate?: number;
+  nf_total_fat?: number;
   serving_weight_grams: number;
   photo?: { thumb: string };
   tag_id?: string;
+  barcode?: string;
 }
 
 /** @deprecated Use `colors` from src/theme instead. */

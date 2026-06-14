@@ -81,8 +81,11 @@ export async function flush(): Promise<void> {
         const date = key.slice(4);
         const log = state.logs[date];
         if (log) {
+          const cleanLog = Object.fromEntries(
+            Object.entries(log).filter(([, v]) => v !== undefined)
+          );
           batch.set(doc(db, 'users', uid, 'logs', date), {
-            ...log,
+            ...cleanLog,
             updatedAt: serverTimestamp(),
           });
         }
@@ -119,8 +122,15 @@ async function fetchUserDoc(uid: string): Promise<Omit<CloudPayload, 'logs'> | n
  * `generation` must match syncGeneration at write time — if stopSync() was
  * called while this was in-flight, the generation will have advanced and the
  * stale results are discarded instead of overwriting a reset/sign-out state.
+ *
+ * `preExistingDirty` is a snapshot of the dirty set taken at the START of
+ * startSync(), before any local side-effects (e.g. ensureTodayLog) can add
+ * new keys. Only those pre-existing dirty keys are allowed to override cloud
+ * data — they represent genuine offline edits. Keys added after sync began
+ * (e.g. an empty log created by ensureTodayLog while cloud fetch is in-flight)
+ * must NOT override cloud data, otherwise real data gets wiped.
  */
-async function fetchLogsInBackground(uid: string, generation: number) {
+async function fetchLogsInBackground(uid: string, generation: number, preExistingDirty: Set<string>) {
   try {
     const logs: Record<string, DayLog> = {};
     const cutoff = dayjs().subtract(HYDRATE_DAYS, 'day').format('YYYY-MM-DD');
@@ -133,12 +143,12 @@ async function fetchLogsInBackground(uid: string, generation: number) {
     });
     // Abort if stopSync() was called while we were fetching.
     if (generation !== syncGeneration) return;
-    // Cloud is the base. Dirty local logs (edits made while fetch was in-flight)
-    // override cloud. Non-dirty local logs do NOT override — cloud is authoritative.
+    // Cloud is the base. Only pre-existing offline edits (dirty BEFORE startSync
+    // was called) can override cloud. Post-sync dirty keys are ignored here.
     useFitStore.setState((s) => {
       const merged: Record<string, DayLog> = { ...logs };
       for (const date of Object.keys(s.logs)) {
-        if (dirty.has(`log:${date}`)) merged[date] = s.logs[date];
+        if (preExistingDirty.has(`log:${date}`)) merged[date] = s.logs[date];
       }
       return { logs: merged };
     });
@@ -193,8 +203,11 @@ export async function pushAll(uid: string): Promise<void> {
     // the batch with the user doc).
     const chunkBatch = i === 0 ? batch : writeBatch(db);
     for (const date of dates.slice(i, i + 400)) {
+      const cleanLog = Object.fromEntries(
+        Object.entries(state.logs[date]).filter(([, v]) => v !== undefined)
+      );
       chunkBatch.set(doc(db, 'users', uid, 'logs', date), {
-        ...state.logs[date],
+        ...cleanLog,
         updatedAt: serverTimestamp(),
       });
     }
@@ -209,6 +222,8 @@ export async function pushAll(uid: string): Promise<void> {
  *
  * Returns 'onboarding' when neither cloud nor local has an onboarded profile.
  */
+const UID_KEY = 'fitmate-last-uid';
+
 export async function startSync(): Promise<'ready' | 'onboarding'> {
   const uid = auth.currentUser?.uid;
   if (!uid) throw new Error('startSync called without a signed-in user');
@@ -219,8 +234,25 @@ export async function startSync(): Promise<'ready' | 'onboarding'> {
   // background fetch below is tied to this sync session.
   const gen = syncGeneration;
 
+  // If a different user is signing in, wipe the previous user's local state
+  // before pulling from cloud — prevents data leakage between accounts.
+  try {
+    const lastUid = await AsyncStorage.getItem(UID_KEY);
+    if (lastUid && lastUid !== uid) {
+      useFitStore.getState().resetAll();
+      await AsyncStorage.removeMany(['fitmate-storage', QUEUE_KEY]);
+    }
+    await AsyncStorage.setItem(UID_KEY, uid);
+  } catch {
+    // best effort
+  }
+
   await loadQueue();
   const hadOfflineEdits = dirty.size > 0;
+  // Snapshot dirty BEFORE any local side-effects (ensureTodayLog, etc.) can
+  // add new keys. Only these pre-existing keys represent genuine offline edits
+  // that should override cloud data in fetchLogsInBackground.
+  const preExistingDirty = new Set(dirty);
 
   let result: 'ready' | 'onboarding' = 'ready';
   try {
@@ -248,7 +280,7 @@ export async function startSync(): Promise<'ready' | 'onboarding'> {
         });
       }
       // Fetch logs in background — UI is already showing.
-      void fetchLogsInBackground(uid, gen);
+      void fetchLogsInBackground(uid, gen, preExistingDirty);
     } else if (local.profile.onboarded) {
       // Existing local user, first cloud sync — push everything up.
       await pushAll(uid);
@@ -315,6 +347,11 @@ export function stopSync() {
 export async function clearDirty(): Promise<void> {
   dirty.clear();
   try { await AsyncStorage.removeItem(QUEUE_KEY); } catch {}
+}
+
+/** Clears the stored last-UID so the next sign-in always does a full cloud pull. */
+export async function clearLastUid(): Promise<void> {
+  try { await AsyncStorage.removeItem(UID_KEY); } catch {}
 }
 
 /** Deletes every cloud doc for the user. Used by reset and account deletion. */

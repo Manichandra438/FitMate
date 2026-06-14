@@ -10,7 +10,7 @@ import {
   Platform,
   Alert,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
 import { COLORS } from '../types';
@@ -29,6 +29,7 @@ function projectGoalDate(history: { date: string; weight: number }[], goal: numb
 }
 
 export default function WeightScreen() {
+  const navigation = useNavigation<any>();
   const { profile, weightHistory, logWeight, getTodayLog, ensureTodayLog } =
     useFitStore();
   const [inputWeight, setInputWeight] = useState('');
@@ -186,6 +187,22 @@ export default function WeightScreen() {
           </View>
         )}
 
+        {/* Body measurements link */}
+        <TouchableOpacity
+          style={styles.measureCard}
+          onPress={() => navigation.navigate('Measurements')}
+          activeOpacity={0.7}
+        >
+          <View style={styles.measureIcon}>
+            <Ionicons name="body" size={20} color={COLORS.blue} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.measureTitle}>Body Measurements</Text>
+            <Text style={styles.measureSub}>Track waist, chest, hips and more</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />
+        </TouchableOpacity>
+
         <View style={{ height: 24 }} />
       </ScrollView>
     </KeyboardAvoidingView>
@@ -319,4 +336,25 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
+  measureCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: COLORS.card,
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    marginBottom: 12,
+  },
+  measureIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: '#E3F3FD',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  measureTitle: { fontSize: 15, fontWeight: '700', color: COLORS.textPrimary },
+  measureSub: { fontSize: 12, color: COLORS.textSecondary, marginTop: 2 },
 });

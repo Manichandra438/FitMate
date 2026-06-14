@@ -6,12 +6,16 @@ import { DEFAULT_EXERCISE_PLAN } from '../data/exercisePlan';
 import { generatePlan } from '../services/planGenerator';
 import { computeStreak, computeTodayTotals, todayStr } from '../services/statsHelpers';
 import {
+  BodyMeasurement,
   DayLog,
   ExercisePlan,
+  FoodItem,
   Meal,
   MealLog,
+  NotifPrefs,
   OnboardingAnswers,
   PlanTargets,
+  QuickAdd,
   UserProfile,
   WeightEntry,
 } from '../types';
@@ -35,6 +39,14 @@ const buildDefaultDayLog = (meals: Meal[]): DayLog => ({
   exercise: { done: false, skipped: false },
   weight: undefined,
 });
+
+export const DEFAULT_NOTIF_PREFS: NotifPrefs = {
+  meals: true,
+  water: true,
+  weight: true,
+  exercise: true,
+  smartNudges: true,
+};
 
 export const DEFAULT_PROFILE: UserProfile = {
   name: '',
@@ -63,6 +75,9 @@ export interface CloudPayload {
   exercisePlan: ExercisePlan;
   weightHistory: WeightEntry[];
   logs: Record<string, DayLog>;
+  bodyMeasurements?: BodyMeasurement[];
+  customFoods?: FoodItem[];
+  notifPrefs?: NotifPrefs;
 }
 
 interface FitState {
@@ -71,6 +86,9 @@ interface FitState {
   weightHistory: WeightEntry[];
   mealPlan: Meal[];
   exercisePlan: ExercisePlan;
+  bodyMeasurements: BodyMeasurement[];
+  customFoods: FoodItem[];
+  notifPrefs: NotifPrefs;
 
   setProfile: (profile: Partial<UserProfile>) => void;
   completeOnboarding: (answers: OnboardingAnswers) => PlanTargets;
@@ -93,6 +111,15 @@ interface FitState {
   getTodayLog: () => DayLog;
   getStreak: () => number;
   getTodayTotals: () => { kcal: number; protein: number };
+  copyYesterdayMeals: () => boolean;
+  quickAdd: (kcal: number, protein: number, label?: string) => void;
+  removeQuickAdd: (id: string) => void;
+  updateSteps: (steps: number) => void;
+  addCustomFood: (food: Omit<FoodItem, 'id' | 'isCustom'>) => void;
+  deleteCustomFood: (id: string) => void;
+  addBodyMeasurement: (m: BodyMeasurement) => void;
+  getWeeklyBank: () => { budget: number; consumed: number; bank: number };
+  setNotifPrefs: (prefs: Partial<NotifPrefs>) => void;
 }
 
 export const useFitStore = create<FitState>()(
@@ -103,6 +130,9 @@ export const useFitStore = create<FitState>()(
       weightHistory: [],
       mealPlan: [],
       exercisePlan: DEFAULT_EXERCISE_PLAN,
+      bodyMeasurements: [],
+      customFoods: [],
+      notifPrefs: DEFAULT_NOTIF_PREFS,
 
       setProfile: (profile) =>
         set((s) => ({ profile: { ...s.profile, ...profile } })),
@@ -153,6 +183,9 @@ export const useFitStore = create<FitState>()(
           exercisePlan: payload.exercisePlan ?? s.exercisePlan,
           weightHistory: payload.weightHistory ?? s.weightHistory,
           logs: payload.logs ? { ...s.logs, ...payload.logs } : s.logs,
+          bodyMeasurements: payload.bodyMeasurements ?? s.bodyMeasurements,
+          customFoods: payload.customFoods ?? s.customFoods,
+          notifPrefs: payload.notifPrefs ?? s.notifPrefs,
         })),
 
       resetAll: () =>
@@ -162,6 +195,9 @@ export const useFitStore = create<FitState>()(
           weightHistory: [],
           mealPlan: [],
           exercisePlan: DEFAULT_EXERCISE_PLAN,
+          bodyMeasurements: [],
+          customFoods: [],
+          notifPrefs: DEFAULT_NOTIF_PREFS,
         }),
 
       ensureTodayLog: () => {
@@ -376,23 +412,130 @@ export const useFitStore = create<FitState>()(
         return logs[date] ?? buildDefaultDayLog(mealPlan);
       },
 
-      getTodayTotals: () => computeTodayTotals(get().logs[todayStr()]),
+      getTodayTotals: () => {
+        const log = get().logs[todayStr()];
+        const base = computeTodayTotals(log);
+        const quickKcal = (log?.quickAdds ?? []).reduce((s, q) => s + q.kcal, 0);
+        const quickProtein = (log?.quickAdds ?? []).reduce((s, q) => s + q.protein, 0);
+        return { kcal: base.kcal + quickKcal, protein: Math.round(base.protein + quickProtein) };
+      },
 
       getStreak: () => computeStreak(get().logs),
+
+      copyYesterdayMeals: () => {
+        const today = todayStr();
+        const yesterday = dayjs().subtract(1, 'day').format('YYYY-MM-DD');
+        const { logs } = get();
+        const yLog = logs[yesterday];
+        if (!yLog) return false;
+        const loggedMeals = yLog.meals.filter((m) => m.logged);
+        if (loggedMeals.length === 0) return false;
+        get().ensureTodayLog();
+        set((s) => ({
+          logs: {
+            ...s.logs,
+            [today]: {
+              ...s.logs[today],
+              meals: s.logs[today].meals.map((m) => {
+                const yMeal = loggedMeals.find((ym) => ym.mealId === m.mealId);
+                if (!yMeal || m.logged) return m;
+                return { ...yMeal, loggedAt: dayjs().format('h:mm A') };
+              }),
+            },
+          },
+        }));
+        return true;
+      },
+
+      quickAdd: (kcal, protein, label) => {
+        const date = todayStr();
+        get().ensureTodayLog();
+        const qa: QuickAdd = {
+          id: `qa_${Date.now()}`,
+          label,
+          kcal: Math.round(kcal),
+          protein: Math.round(protein * 10) / 10,
+          addedAt: dayjs().format('h:mm A'),
+        };
+        set((s) => ({
+          logs: {
+            ...s.logs,
+            [date]: {
+              ...s.logs[date],
+              quickAdds: [...(s.logs[date]?.quickAdds ?? []), qa],
+            },
+          },
+        }));
+      },
+
+      removeQuickAdd: (id) => {
+        const date = todayStr();
+        set((s) => ({
+          logs: {
+            ...s.logs,
+            [date]: {
+              ...s.logs[date],
+              quickAdds: (s.logs[date]?.quickAdds ?? []).filter((q) => q.id !== id),
+            },
+          },
+        }));
+      },
+
+      updateSteps: (steps) => {
+        const date = todayStr();
+        get().ensureTodayLog();
+        set((s) => ({
+          logs: { ...s.logs, [date]: { ...s.logs[date], steps } },
+        }));
+      },
+
+      addCustomFood: (food) => {
+        const item: FoodItem = { ...food, id: `cf_${Date.now()}`, isCustom: true };
+        set((s) => ({ customFoods: [...s.customFoods, item] }));
+      },
+
+      deleteCustomFood: (id) =>
+        set((s) => ({ customFoods: s.customFoods.filter((f) => f.id !== id) })),
+
+      addBodyMeasurement: (m) =>
+        set((s) => {
+          const filtered = s.bodyMeasurements.filter((b) => b.date !== m.date);
+          return { bodyMeasurements: [...filtered, m].sort((a, b) => a.date.localeCompare(b.date)) };
+        }),
+
+      getWeeklyBank: () => {
+        const { logs, profile } = get();
+        const days = Array.from({ length: 7 }, (_, i) =>
+          dayjs().subtract(i, 'day').format('YYYY-MM-DD')
+        );
+        const consumed = days.reduce((sum, d) => {
+          const log = logs[d];
+          if (!log) return sum;
+          const meals = log.meals.filter((m) => m.logged).reduce((s, m) => s + m.totalKcal, 0);
+          const qa = (log.quickAdds ?? []).reduce((s, q) => s + q.kcal, 0);
+          return sum + meals + qa;
+        }, 0);
+        const budget = profile.calorieGoal * 7;
+        return { budget, consumed: Math.round(consumed), bank: budget - Math.round(consumed) };
+      },
+
+      setNotifPrefs: (prefs) =>
+        set((s) => ({ notifPrefs: { ...s.notifPrefs, ...prefs } })),
     }),
     {
       name: 'fitmate-storage',
       storage: createJSONStorage(() => AsyncStorage),
-      version: 2,
+      version: 4,
       migrate: (persisted: any, version) => {
         if (version < 2 && persisted) {
-          // v1 → v2: keep logs/weightHistory/plans; extend the profile and
-          // route everyone through onboarding once so targets get computed.
-          persisted.profile = {
-            ...DEFAULT_PROFILE,
-            ...persisted.profile,
-            onboarded: false,
-          };
+          persisted.profile = { ...DEFAULT_PROFILE, ...persisted.profile, onboarded: false };
+        }
+        if (version < 3 && persisted) {
+          persisted.bodyMeasurements = persisted.bodyMeasurements ?? [];
+          persisted.customFoods = persisted.customFoods ?? [];
+        }
+        if (version < 4 && persisted) {
+          persisted.notifPrefs = { ...DEFAULT_NOTIF_PREFS, ...persisted.notifPrefs };
         }
         return persisted;
       },

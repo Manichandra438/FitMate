@@ -91,7 +91,7 @@ export default function OnboardingScreen() {
 
   // Height
   const [heightUnit, setHeightUnit] = useState<'cm' | 'ft'>('cm');
-  const [height, setHeight] = useState('');   // cm value
+  const [height, setHeight] = useState('');
   const [heightFt, setHeightFt] = useState('');
   const [heightIn, setHeightIn] = useState('');
 

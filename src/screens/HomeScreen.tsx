@@ -23,6 +23,7 @@ import WaterGlass from '../components/anim/WaterGlass';
 import { useCountUp } from '../hooks/useCountUp';
 import WeeklyReportModal from '../components/WeeklyReportModal';
 import { computeBadges } from '../services/badges';
+import { useStepCounter } from '../hooks/useStepCounter';
 
 export default function HomeScreen() {
   const navigation = useNavigation<any>();
@@ -39,6 +40,7 @@ export default function HomeScreen() {
     getTodayTotals,
     getStreak,
     ensureTodayLog,
+    getWeeklyBank,
   } = useFitStore();
 
   useFocusEffect(
@@ -51,9 +53,12 @@ export default function HomeScreen() {
   const log = getTodayLog();
   const { kcal, protein } = getTodayTotals();
   const streak = getStreak();
-  const remaining = Math.max(profile.calorieGoal - kcal, 0);
+  const isOverBudget = kcal > profile.calorieGoal;
+  const displayKcal = isOverBudget ? kcal - profile.calorieGoal : profile.calorieGoal - kcal;
   const earnedBadges = computeBadges(profile, logs, weightHistory, streak).filter((b) => b.earned);
-  const remainingAnimated = useCountUp(remaining);
+  const displayAnimated = useCountUp(displayKcal);
+  const weeklyBank = getWeeklyBank();
+  const { steps, available: stepsAvailable, kcalBurned } = useStepCounter();
 
   const hour = dayjs().hour();
   const greeting =
@@ -110,8 +115,12 @@ export default function HomeScreen() {
         <FadeSlideIn delay={60}>
           <View style={styles.heroWrap}>
             <GlowRing size={210} strokeWidth={16} progress={profile.calorieGoal ? kcal / profile.calorieGoal : 0}>
-              <Text style={styles.heroRemaining}>{remainingAnimated}</Text>
-              <Text style={styles.heroLabel}>kcal left</Text>
+              <Text style={[styles.heroRemaining, isOverBudget && { color: colors.red }]}>
+                {displayAnimated}
+              </Text>
+              <Text style={[styles.heroLabel, isOverBudget && { color: colors.red }]}>
+                {isOverBudget ? 'kcal over' : 'kcal left'}
+              </Text>
               <Text style={styles.heroSub}>
                 {kcal} of {profile.calorieGoal}
               </Text>
@@ -142,6 +151,38 @@ export default function HomeScreen() {
             onPress={() => navigation.navigate('Progress')}
           />
         </View>
+
+        {/* Weekly calorie bank */}
+        <FadeSlideIn delay={100}>
+          <GradientCard style={styles.bankCard}>
+            <View style={styles.bankRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.bankTitle}>📅 Weekly Bank</Text>
+                <Text style={styles.bankSub}>{weeklyBank.consumed} / {weeklyBank.budget} kcal this week</Text>
+              </View>
+              <View style={[styles.bankBadge, weeklyBank.bank < 0 && styles.bankBadgeOver]}>
+                <Text style={[styles.bankBadgeText, weeklyBank.bank < 0 && { color: colors.red }]}>
+                  {weeklyBank.bank >= 0 ? `+${weeklyBank.bank}` : weeklyBank.bank} kcal
+                </Text>
+              </View>
+            </View>
+          </GradientCard>
+        </FadeSlideIn>
+
+        {/* Step counter */}
+        {stepsAvailable && (
+          <FadeSlideIn delay={110}>
+            <GradientCard style={styles.stepsCard}>
+              <View style={styles.bankRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.bankTitle}>👟 Steps today</Text>
+                  <Text style={styles.bankSub}>≈ {kcalBurned} kcal burned</Text>
+                </View>
+                <Text style={styles.stepsCount}>{steps.toLocaleString()}</Text>
+              </View>
+            </GradientCard>
+          </FadeSlideIn>
+        )}
 
         {/* Badges */}
         {earnedBadges.length > 0 && (
@@ -325,6 +366,15 @@ const styles = StyleSheet.create({
   heroLabel: { fontSize: 14, fontWeight: '600', color: colors.primary, marginTop: -2 },
   heroSub: { fontSize: 12, color: colors.textSecondary, marginTop: 4 },
   tiles: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md },
+  bankCard: { marginBottom: spacing.sm },
+  stepsCard: { marginBottom: spacing.sm },
+  bankRow: { flexDirection: 'row', alignItems: 'center' },
+  bankTitle: { fontSize: 13, fontWeight: '700', color: colors.textPrimary },
+  bankSub: { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
+  bankBadge: { backgroundColor: colors.mintSoft, borderRadius: radius.pill, paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1, borderColor: colors.mint },
+  bankBadgeOver: { backgroundColor: colors.redBg, borderColor: colors.red },
+  bankBadgeText: { fontSize: 13, fontWeight: '700', color: colors.mint },
+  stepsCount: { fontSize: 22, fontWeight: '800', color: colors.sky },
   waterCard: { marginBottom: spacing.md },
   cardTitle: {
     color: colors.textSecondary,

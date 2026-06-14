@@ -2,12 +2,14 @@ import React, { useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
+  TouchableOpacity,
   View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -35,7 +37,11 @@ export default function LoginScreen() {
   const [confirm, setConfirm]         = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm]   = useState(false);
-  const [loading, setLoading]         = useState(false);
+  const [loading, setLoading]           = useState(false);
+  const [resetVisible, setResetVisible] = useState(false);
+  const [resetEmail, setResetEmail]     = useState('');
+  const [resetSent, setResetSent]       = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
 
   const checkFirebase = () => {
     if (!isFirebaseConfigured()) {
@@ -74,11 +80,7 @@ export default function LoginScreen() {
         await signInWithEmail(email, password);
       } else {
         await signUpWithEmail(email, password);
-        Alert.alert(
-          'Account created!',
-          'A verification email has been sent. You can verify it at any time from Settings.',
-          [{ text: 'Continue' }]
-        );
+        // No alert here — AppNavigator will immediately show EmailVerificationScreen.
       }
     } catch (err: any) {
       Alert.alert(emailMode === 'signin' ? 'Sign-in failed' : 'Sign-up failed', friendlyAuthError(err));
@@ -87,23 +89,26 @@ export default function LoginScreen() {
     }
   };
 
-  const handleForgotPassword = () => {
-    Alert.prompt(
-      'Reset password',
-      'Enter your email and we\'ll send a reset link.',
-      async (inputEmail) => {
-        if (!inputEmail?.trim()) return;
-        try {
-          await sendPasswordReset(inputEmail);
-          Alert.alert('Email sent', 'Check your inbox for the password reset link.');
-        } catch (err: any) {
-          Alert.alert('Failed', friendlyAuthError(err));
-        }
-      },
-      'plain-text',
-      email,
-      'email-address'
-    );
+  const openReset = () => {
+    setResetEmail(email);
+    setResetSent(false);
+    setResetVisible(true);
+  };
+
+  const handleSendReset = async () => {
+    if (!resetEmail.trim()) {
+      Alert.alert('Email required', 'Enter your email address.');
+      return;
+    }
+    setResetLoading(true);
+    try {
+      await sendPasswordReset(resetEmail);
+      setResetSent(true);
+    } catch (err: any) {
+      Alert.alert('Failed', friendlyAuthError(err));
+    } finally {
+      setResetLoading(false);
+    }
   };
 
   const switchMode = (m: EmailMode) => {
@@ -275,7 +280,7 @@ export default function LoginScreen() {
                 />
 
                 {emailMode === 'signin' && (
-                  <Pressable onPress={handleForgotPassword} style={styles.forgotBtn}>
+                  <Pressable onPress={openReset} style={styles.forgotBtn}>
                     <Text style={styles.forgotText}>Forgot password?</Text>
                   </Pressable>
                 )}
@@ -288,6 +293,78 @@ export default function LoginScreen() {
           </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
+
+      {/* Forgot password modal — works on Android + iOS */}
+      <Modal
+        visible={resetVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setResetVisible(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setResetVisible(false)}
+        >
+          <TouchableOpacity style={styles.modalSheet} activeOpacity={1} onPress={() => {}}>
+            <View style={styles.modalHandle} />
+
+            {resetSent ? (
+              /* ── Success state ── */
+              <View style={styles.modalSuccess}>
+                <View style={styles.successIcon}>
+                  <Ionicons name="checkmark-circle" size={48} color={colors.mint} />
+                </View>
+                <Text style={styles.modalTitle}>Email sent!</Text>
+                <Text style={styles.modalSub}>
+                  Check your inbox for the reset link.{'\n'}It may take a minute to arrive.
+                </Text>
+                <Pressable
+                  style={styles.modalDoneBtn}
+                  onPress={() => setResetVisible(false)}
+                >
+                  <Text style={styles.modalDoneText}>Done</Text>
+                </Pressable>
+              </View>
+            ) : (
+              /* ── Input state ── */
+              <>
+                <Text style={styles.modalTitle}>Reset password</Text>
+                <Text style={styles.modalSub}>
+                  Enter your email and we'll send a reset link.
+                </Text>
+                <View style={[styles.inputWrap, { marginTop: spacing.md }]}>
+                  <Ionicons name="mail-outline" size={18} color={colors.textMuted} style={styles.inputIcon} />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Email address"
+                    placeholderTextColor={colors.textMuted}
+                    value={resetEmail}
+                    onChangeText={setResetEmail}
+                    autoCapitalize="none"
+                    keyboardType="email-address"
+                    autoCorrect={false}
+                    autoFocus
+                    returnKeyType="send"
+                    onSubmitEditing={handleSendReset}
+                  />
+                </View>
+                <GradientButton
+                  title={resetLoading ? 'Sending…' : 'Send reset link'}
+                  onPress={handleSendReset}
+                  loading={resetLoading}
+                />
+                <Pressable
+                  style={styles.forgotBtn}
+                  onPress={() => setResetVisible(false)}
+                >
+                  <Text style={[styles.forgotText, { color: colors.textSecondary }]}>Cancel</Text>
+                </Pressable>
+              </>
+            )}
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </LinearGradient>
   );
 }
@@ -363,4 +440,55 @@ const styles = StyleSheet.create({
   forgotText: { fontSize: 13, color: colors.primary, fontWeight: '600' },
 
   disclaimer: { fontSize: 12, color: colors.textMuted, textAlign: 'center', marginTop: spacing.xl },
+
+  /* Forgot password modal */
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(46,42,38,0.35)',
+    justifyContent: 'flex-end',
+  },
+  modalSheet: {
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    padding: spacing.xl,
+    paddingBottom: 40,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderBottomWidth: 0,
+    gap: spacing.md,
+  },
+  modalHandle: {
+    width: 40, height: 4,
+    backgroundColor: colors.border,
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: spacing.sm,
+  },
+  modalTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: colors.textPrimary,
+    letterSpacing: -0.3,
+  },
+  modalSub: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    lineHeight: 20,
+  },
+  modalSuccess: { alignItems: 'center', gap: spacing.md, paddingVertical: spacing.md },
+  successIcon: {
+    width: 80, height: 80,
+    borderRadius: radius.card,
+    backgroundColor: colors.mintSoft,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  modalDoneBtn: {
+    backgroundColor: colors.primary,
+    borderRadius: radius.pill,
+    paddingVertical: 14,
+    paddingHorizontal: 48,
+    marginTop: spacing.sm,
+  },
+  modalDoneText: { color: '#fff', fontWeight: '700', fontSize: 15 },
 });

@@ -1,7 +1,7 @@
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import Constants from 'expo-constants';
-import { DayLog, Meal, ExercisePlan, UserProfile } from '../types';
+import { DayLog, Meal, ExercisePlan, NotifPrefs, UserProfile } from '../types';
 
 // Expo Go (SDK 53+) removed remote push notifications.
 // Local notifications still work. We skip push registration in Expo Go.
@@ -186,17 +186,20 @@ export async function scheduleExerciseReminder(
 export async function scheduleAllNotifications(
   meals: Meal[],
   exercisePlan: ExercisePlan,
-  profile: UserProfile
+  profile: UserProfile,
+  prefs?: NotifPrefs
 ): Promise<void> {
   try {
     const granted = await requestNotificationPermission();
     if (!granted) return;
 
+    const p = prefs ?? { meals: true, water: true, weight: true, exercise: true, smartNudges: true };
+
     await Promise.all([
-      scheduleMealReminders(meals),
-      scheduleWaterReminders(profile),
-      scheduleWeightReminder(profile),
-      scheduleExerciseReminder(exercisePlan, profile),
+      p.meals ? scheduleMealReminders(meals) : cancelByPrefix('meal_'),
+      p.water ? scheduleWaterReminders(profile) : cancelByPrefix('water_'),
+      p.weight ? scheduleWeightReminder(profile) : cancelByPrefix('weight_'),
+      p.exercise ? scheduleExerciseReminder(exercisePlan, profile) : cancelByPrefix('exercise_'),
     ]);
   } catch (err) {
     // Notifications not supported in this environment (e.g. Expo Go SDK53+)
@@ -222,8 +225,10 @@ const _smartCooldown = new Set<string>();
 export async function checkAndSendSmartReminders(
   mealPlan: Meal[],
   log: DayLog | undefined,
-  profile: UserProfile
+  profile: UserProfile,
+  prefs?: NotifPrefs
 ): Promise<void> {
+  if (prefs && !prefs.smartNudges) return;
   if (!Device.isDevice) return;
   try {
     const granted = await requestNotificationPermission();

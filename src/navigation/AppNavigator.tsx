@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -19,6 +19,11 @@ import LoginScreen from '../screens/LoginScreen';
 import SplashScreen from '../screens/SplashScreen';
 import OnboardingScreen from '../screens/onboarding/OnboardingScreen';
 import EditProfileScreen from '../screens/EditProfileScreen';
+import BarcodeScannerScreen from '../screens/BarcodeScannerScreen';
+import CustomFoodScreen from '../screens/CustomFoodScreen';
+import MeasurementsScreen from '../screens/MeasurementsScreen';
+import EmailVerificationScreen from '../screens/EmailVerificationScreen';
+import { NutritionixFood } from '../types';
 
 export type RootStackParamList = {
   Tabs: undefined;
@@ -26,6 +31,9 @@ export type RootStackParamList = {
   Exercise: undefined;
   Water: undefined;
   EditProfile: undefined;
+  BarcodeScanner: { onFound: (food: NutritionixFood) => void };
+  CustomFood: { onCreated?: (food: NutritionixFood) => void };
+  Measurements: undefined;
 };
 
 export type TabParamList = {
@@ -143,6 +151,18 @@ export default function AppNavigator({
   hydrated,
   onboarded,
 }: Props) {
+  // Track email verification separately so we can update it after user.reload()
+  // without waiting for onAuthStateChanged (which won't re-fire on reload).
+  const isEmailUser = user?.providerData.some((p) => p.providerId === 'password') ?? false;
+  const [emailVerified, setEmailVerified] = useState(
+    () => !isEmailUser || (user?.emailVerified ?? true)
+  );
+
+  useEffect(() => {
+    const emailProvider = user?.providerData.some((p) => p.providerId === 'password') ?? false;
+    setEmailVerified(!emailProvider || (user?.emailVerified ?? true));
+  }, [user]);
+
   let content: React.ReactNode;
 
   // Dev bypass: Firebase not configured → skip auth gate so the whole flow
@@ -157,7 +177,17 @@ export default function AppNavigator({
   // 3. No local profile yet → fall back to the auth-driven flow.
   if (!hydrated) {
     content = <SplashScreen />;
-  } else if (onboarded) {
+  } else if (user && !emailVerified) {
+    // Email user who hasn't verified — block until they click the link.
+    content = (
+      <EmailVerificationScreen
+        email={user.email ?? ''}
+        onVerified={() => setEmailVerified(true)}
+      />
+    );
+  } else if (user && onboarded) {
+    // Signed-in + onboarded: show app immediately from local store.
+    // startSync() refreshes from cloud in background.
     content = <MainApp />;
   } else if (devBypass) {
     content = <OnboardingScreen />;
@@ -209,6 +239,21 @@ function MainApp() {
           name="EditProfile"
           component={EditProfileScreen}
           options={{ title: 'Edit Profile', headerBackTitle: 'Settings' }}
+        />
+        <Stack.Screen
+          name="BarcodeScanner"
+          component={BarcodeScannerScreen}
+          options={{ title: 'Scan Barcode', headerBackTitle: 'Back' }}
+        />
+        <Stack.Screen
+          name="CustomFood"
+          component={CustomFoodScreen}
+          options={{ title: 'Create Custom Food', headerBackTitle: 'Back' }}
+        />
+        <Stack.Screen
+          name="Measurements"
+          component={MeasurementsScreen}
+          options={{ title: 'Body Measurements', headerBackTitle: 'Weight' }}
         />
       </Stack.Navigator>
   );

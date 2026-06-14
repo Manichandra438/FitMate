@@ -14,7 +14,7 @@ import { scheduleWidgetRefresh } from './src/widgets/updateWidget';
 
 export default function App() {
   const { user, initializing } = useAuth();
-  const [hydrating, setHydrating] = useState(false);
+  const [hydrating, setHydrating] = useState(true);
   // Persist (AsyncStorage) rehydration gate — local-first rendering depends on
   // knowing whether the store has loaded yet, so we don't flash Login over data
   // that is about to appear.
@@ -37,15 +37,13 @@ export default function App() {
     if (user) {
       if (syncedUid.current === user.uid) return;
       syncedUid.current = user.uid;
-      // Only show splash on fresh installs — returning users see local data instantly.
-      const hasLocalData = useFitStore.getState().profile.onboarded;
-      if (!hasLocalData) setHydrating(true);
       startSync()
         .catch(console.warn)
         .finally(() => setHydrating(false));
     } else {
       syncedUid.current = null;
       stopSync();
+      setHydrating(false);
       // Do NOT wipe local data on a null session. Losing the Firebase session
       // (token expiry / revocation) must not destroy the user's local-first
       // data — they'd see it flash then vanish. Explicit sign-out and account

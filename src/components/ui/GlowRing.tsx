@@ -14,7 +14,7 @@ const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 interface Props {
   size?: number;
   strokeWidth?: number;
-  /** 0..1 */
+  /** 0..n — values > 1 trigger the over-budget overflow arc */
   progress: number;
   children?: React.ReactNode;
   style?: ViewStyle;
@@ -31,38 +31,57 @@ export default function GlowRing({
 }: Props) {
   const r = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * r;
-  const clamped = Math.min(Math.max(progress, 0), 1);
+  const isOver = progress > 1;
 
-  const animated = useSharedValue(0);
+  // Main arc clamped to full; overflow arc = how far past 100%
+  const clampedMain = Math.min(Math.max(progress, 0), 1);
+  const overflowFraction = Math.min(Math.max(progress - 1, 0), 1);
+
+  const animatedMain = useSharedValue(0);
+  const animatedOverflow = useSharedValue(0);
 
   useEffect(() => {
-    animated.value = withTiming(clamped, {
-      duration: 900,
-      easing: Easing.out(Easing.cubic),
-    });
-  }, [clamped]);
+    animatedMain.value = withTiming(clampedMain, { duration: 900, easing: Easing.out(Easing.cubic) });
+    animatedOverflow.value = withTiming(overflowFraction, { duration: 900, easing: Easing.out(Easing.cubic) });
+  }, [clampedMain, overflowFraction]);
 
-  const animatedProps = useAnimatedProps(() => ({
-    strokeDashoffset: circumference * (1 - animated.value),
+  const mainProps = useAnimatedProps(() => ({
+    strokeDashoffset: circumference * (1 - animatedMain.value),
   }));
 
+  const overflowAnimProps = useAnimatedProps(() => ({
+    strokeDashoffset: circumference * (1 - animatedOverflow.value),
+  }));
+
+  // Flip to danger palette when over budget
+  const activeGradient = isOver ? gradients.danger : gradientColors;
+  const ringGlow: ViewStyle = isOver
+    ? { shadowColor: colors.red, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.28, shadowRadius: 24, elevation: 8 }
+    : glow;
+
   return (
-    <View style={[{ width: size, height: size }, glow, style]}>
+    <View style={[{ width: size, height: size }, ringGlow, style]}>
       <Svg width={size} height={size}>
         <Defs>
           <LinearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-            <Stop offset="0%" stopColor={gradientColors[0]} />
-            <Stop offset="100%" stopColor={gradientColors[1]} />
+            <Stop offset="0%" stopColor={activeGradient[0]} />
+            <Stop offset="100%" stopColor={activeGradient[1]} />
+          </LinearGradient>
+          <LinearGradient id="overGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <Stop offset="0%" stopColor="#FF4444" />
+            <Stop offset="100%" stopColor="#CC2222" />
           </LinearGradient>
         </Defs>
+        {/* Track */}
         <Circle
           cx={size / 2}
           cy={size / 2}
           r={r}
-          stroke={colors.surfaceHigh}
+          stroke={isOver ? colors.redBg : colors.surfaceHigh}
           strokeWidth={strokeWidth}
           fill="none"
         />
+        {/* Main arc (fills to 100%, turns red when over) */}
         <AnimatedCircle
           cx={size / 2}
           cy={size / 2}
@@ -72,7 +91,20 @@ export default function GlowRing({
           strokeLinecap="round"
           fill="none"
           strokeDasharray={circumference}
-          animatedProps={animatedProps}
+          animatedProps={mainProps}
+          transform={`rotate(-90 ${size / 2} ${size / 2})`}
+        />
+        {/* Overflow arc — wraps from top, visible only when over budget */}
+        <AnimatedCircle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          stroke="url(#overGrad)"
+          strokeWidth={strokeWidth + 3}
+          strokeLinecap="round"
+          fill="none"
+          strokeDasharray={circumference}
+          animatedProps={overflowAnimProps}
           transform={`rotate(-90 ${size / 2} ${size / 2})`}
         />
       </Svg>

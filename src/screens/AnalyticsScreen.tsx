@@ -12,6 +12,7 @@ import dayjs from 'dayjs';
 import { COLORS } from '../types';
 import { useFitStore } from '../store/useFitStore';
 import CalorieBalanceChart from '../components/CalorieBalanceChart';
+import MacroDonut from '../components/MacroDonut';
 
 type TabType = 'daily' | 'weekly' | 'streaks';
 
@@ -268,6 +269,27 @@ export default function AnalyticsScreen() {
               <Text style={styles.cardTitle}>Calorie Balance (7 Days)</Text>
               <CalorieBalanceChart />
             </View>
+
+            {/* Macro breakdown — estimated from protein + kcal */}
+            {avgKcal > 0 && (() => {
+              const proteinKcal = avgProtein * 4;
+              const remaining = Math.max(avgKcal - proteinKcal, 0);
+              const estimatedCarbs = Math.round((remaining * 0.55) / 4);
+              const estimatedFat = Math.round((remaining * 0.45) / 9);
+              return (
+                <View style={styles.card}>
+                  <Text style={styles.cardTitle}>Avg Macro Split (estimated)</Text>
+                  <MacroDonut
+                    segments={[
+                      { label: 'Protein', value: avgProtein, color: '#FF9F45' },
+                      { label: 'Carbs', value: estimatedCarbs, color: '#58B9F4' },
+                      { label: 'Fat', value: estimatedFat, color: '#34C79A' },
+                    ]}
+                  />
+                  <Text style={[styles.recapLabel, { marginTop: 10, textAlign: 'center' }]}>Based on 55/45 carb-fat split of non-protein kcal</Text>
+                </View>
+              );
+            })()}
 
             {/* Daily breakdown */}
             <View style={styles.card}>

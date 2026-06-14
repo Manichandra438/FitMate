@@ -30,6 +30,7 @@ export function friendlyAuthError(err: any): string {
     case 'auth/weak-password':       return 'Password must be at least 6 characters.';
     case 'auth/too-many-requests':   return 'Too many attempts. Try again later.';
     case 'auth/network-request-failed': return 'Network error. Check your connection.';
+    case 'auth/operation-not-allowed': return 'Email sign-in is not enabled. Enable it in Firebase Console → Authentication → Sign-in method.';
     default: return err?.message ?? 'Something went wrong. Please try again.';
   }
 }
@@ -71,6 +72,12 @@ export async function signUpWithEmail(email: string, password: string) {
 
 export async function sendPasswordReset(email: string) {
   await sendPasswordResetEmail(auth, email.trim());
+}
+
+export async function resendVerificationEmail(): Promise<void> {
+  const user = auth.currentUser;
+  if (!user) throw new Error('Not signed in');
+  await sendEmailVerification(user);
 }
 
 export async function changePassword(currentPassword: string, newPassword: string) {

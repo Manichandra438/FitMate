@@ -19,8 +19,12 @@ export async function searchFoods(query: string): Promise<NutritionixFood[]> {
         const nutrients: any[] = item.foodNutrients ?? [];
         const kcalNutrient = nutrients.find((n) => n.nutrientId === 1008);
         const proteinNutrient = nutrients.find((n) => n.nutrientId === 1003);
+        const carbsNutrient = nutrients.find((n) => n.nutrientId === 1005);
+        const fatNutrient = nutrients.find((n) => n.nutrientId === 1004);
         const kcalPer100g: number = kcalNutrient?.value ?? 0;
         const proteinPer100g: number = proteinNutrient?.value ?? 0;
+        const carbsPer100g: number = carbsNutrient?.value ?? 0;
+        const fatPer100g: number = fatNutrient?.value ?? 0;
 
         if (kcalPer100g === 0 || kcalPer100g > 900) return null;
 
@@ -34,6 +38,8 @@ export async function searchFoods(query: string): Promise<NutritionixFood[]> {
           food_name: item.description,
           nf_calories: Math.round((kcalPer100g * servingG) / 100),
           nf_protein: Math.round(((proteinPer100g * servingG) / 100) * 10) / 10,
+          nf_total_carbohydrate: Math.round(((carbsPer100g * servingG) / 100) * 10) / 10,
+          nf_total_fat: Math.round(((fatPer100g * servingG) / 100) * 10) / 10,
           serving_weight_grams: servingG,
         } as NutritionixFood;
       })
@@ -50,11 +56,13 @@ export async function searchFoods(query: string): Promise<NutritionixFood[]> {
 export function getNutrients(
   food: NutritionixFood,
   grams: number
-): { kcal: number; protein: number } {
+): { kcal: number; protein: number; carbs: number; fat: number } {
   const swg = food.serving_weight_grams > 0 ? food.serving_weight_grams : 100;
   return {
     kcal: Math.round((food.nf_calories / swg) * grams),
     protein: Math.round(((food.nf_protein / swg) * grams) * 10) / 10,
+    carbs: Math.round((((food.nf_total_carbohydrate ?? 0) / swg) * grams) * 10) / 10,
+    fat: Math.round((((food.nf_total_fat ?? 0) / swg) * grams) * 10) / 10,
   };
 }
 

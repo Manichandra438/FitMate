@@ -18,6 +18,7 @@ import { COLORS, NutritionixFood } from '../types';
 import { searchFoods, getNutrients } from '../services/nutritionix';
 import { useFitStore } from '../store/useFitStore';
 import { success } from '../utils/haptics';
+import { colors } from '../theme';
 
 type RouteParams = {
   FoodSearch: { mealId: string; mealName: string };
@@ -27,7 +28,7 @@ export default function FoodSearchScreen() {
   const navigation = useNavigation();
   const route = useRoute<RouteProp<RouteParams, 'FoodSearch'>>();
   const { mealId, mealName } = route.params;
-  const { logMeal, profile, toggleFavourite } = useFitStore();
+  const { logMeal, profile, toggleFavourite, customFoods } = useFitStore();
   const favourites = profile.favouriteFoods ?? [];
 
   const [query, setQuery] = useState('');
@@ -73,6 +74,14 @@ export default function FoodSearchScreen() {
     setGramModalVisible(false);
     navigation.goBack();
   };
+
+  const handleBarcodeFound = (food: NutritionixFood) => {
+    handleSelect(food);
+  };
+
+  const filteredCustomFoods = customFoods.filter((f) =>
+    query.length === 0 || f.name.toLowerCase().includes(query.toLowerCase())
+  );
 
   const renderItem = ({ item }: { item: NutritionixFood }) => {
     const isFav = favourites.includes(item.food_name);
@@ -121,7 +130,35 @@ export default function FoodSearchScreen() {
             <Ionicons name="close-circle" size={18} color={COLORS.textSecondary} />
           </TouchableOpacity>
         )}
+        <TouchableOpacity
+          onPress={() => (navigation as any).navigate('BarcodeScanner', { onFound: handleBarcodeFound })}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          style={styles.barcodeBtn}
+        >
+          <Ionicons name="barcode-outline" size={24} color={colors.primary} />
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => (navigation as any).navigate('CustomFood', { onCreated: handleBarcodeFound })}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Ionicons name="add-circle-outline" size={22} color={colors.primary} />
+        </TouchableOpacity>
       </View>
+
+      {/* Custom foods */}
+      {filteredCustomFoods.length > 0 && (
+        <View style={styles.suggestions}>
+          <Text style={styles.suggestionsTitle}>🍳 My Foods</Text>
+          <View style={styles.chips}>
+            {filteredCustomFoods.map((f) => (
+              <TouchableOpacity key={f.id} style={[styles.chip, { borderColor: colors.primary, backgroundColor: colors.primarySoft }]}
+                onPress={() => handleSelect({ food_name: f.name, nf_calories: Math.round(f.kcalPer100g), nf_protein: f.proteinPer100g, nf_total_carbohydrate: f.carbsPer100g, nf_total_fat: f.fatPer100g, serving_weight_grams: 100 })}>
+                <Text style={[styles.chipText, { color: colors.primaryDark }]}>{f.name}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      )}
 
       {/* Favourites */}
       {query.length === 0 && favourites.length > 0 && (
@@ -284,6 +321,7 @@ const styles = StyleSheet.create({
     color: COLORS.textPrimary,
     fontSize: 16,
   },
+  barcodeBtn: { marginRight: 4 },
   suggestions: {
     paddingHorizontal: 16,
     marginBottom: 8,

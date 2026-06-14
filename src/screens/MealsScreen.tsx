@@ -22,7 +22,7 @@ import { success } from '../utils/haptics';
 
 export default function MealsScreen() {
   const navigation = useNavigation<any>();
-  const { mealPlan, logMeal, skipMeal, unlogMeal, updateSingleMeal, profile, getTodayLog, ensureTodayLog, getTodayTotals } =
+  const { mealPlan, logMeal, skipMeal, unlogMeal, updateSingleMeal, profile, getTodayLog, ensureTodayLog, getTodayTotals, copyYesterdayMeals, quickAdd, removeQuickAdd } =
     useFitStore();
   const [selectedMeal, setSelectedMeal] = useState<Meal | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
@@ -31,6 +31,10 @@ export default function MealsScreen() {
   const [editProtein, setEditProtein] = useState('');
   const [swapVisible, setSwapVisible] = useState(false);
   const [swapOptions, setSwapOptions] = useState<MealTemplate[]>([]);
+  const [quickModalVisible, setQuickModalVisible] = useState(false);
+  const [quickKcal, setQuickKcal] = useState('');
+  const [quickProtein, setQuickProtein] = useState('');
+  const [quickLabel, setQuickLabel] = useState('');
   const confetti = useRef<ConfettiBurstHandle>(null);
 
   useFocusEffect(useCallback(() => { ensureTodayLog(); }, []));
@@ -130,6 +134,22 @@ export default function MealsScreen() {
   const mealsLogged = log.meals.filter((m) => m.logged).length;
   const mealsSkipped = log.meals.filter((m) => m.skipped).length;
 
+  const handleCopyYesterday = () => {
+    const ok = copyYesterdayMeals();
+    if (!ok) Alert.alert('Nothing to copy', "Yesterday's log has no logged meals.");
+    else { success(); confetti.current?.burst(); }
+  };
+
+  const handleQuickAdd = () => {
+    const k = parseFloat(quickKcal);
+    const p = parseFloat(quickProtein) || 0;
+    if (isNaN(k) || k <= 0) { Alert.alert('Invalid', 'Enter valid calories.'); return; }
+    quickAdd(k, p, quickLabel || undefined);
+    setQuickModalVisible(false);
+    setQuickKcal(''); setQuickProtein(''); setQuickLabel('');
+    success();
+  };
+
   return (
     <View style={styles.container}>
       {/* Header */}
@@ -163,6 +183,18 @@ export default function MealsScreen() {
         </View>
       </View>
 
+      {/* Action row */}
+      <View style={styles.actionRow}>
+        <TouchableOpacity style={styles.actionBtn} onPress={handleCopyYesterday} activeOpacity={0.7}>
+          <Ionicons name="copy-outline" size={16} color={colors.primary} />
+          <Text style={styles.actionBtnText}>Copy yesterday</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.actionBtn, styles.actionBtnAlt]} onPress={() => setQuickModalVisible(true)} activeOpacity={0.7}>
+          <Ionicons name="add-circle-outline" size={16} color={colors.mint} />
+          <Text style={[styles.actionBtnText, { color: colors.mint }]}>Quick add</Text>
+        </TouchableOpacity>
+      </View>
+
       <ScrollView
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
@@ -175,10 +207,56 @@ export default function MealsScreen() {
             onPress={() => handleMealPress(meal)}
           />
         ))}
+
+        {/* Quick adds */}
+        {(log.quickAdds ?? []).length > 0 && (
+          <View style={styles.qaSection}>
+            <Text style={styles.qaTitle}>⚡ Quick adds</Text>
+            {(log.quickAdds ?? []).map((qa) => (
+              <View key={qa.id} style={styles.qaRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.qaLabel}>{qa.label || 'Quick add'}</Text>
+                  <Text style={styles.qaMacros}>{qa.kcal} kcal · {qa.protein}g protein · {qa.addedAt}</Text>
+                </View>
+                <TouchableOpacity onPress={() => removeQuickAdd(qa.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Ionicons name="close-circle" size={20} color={COLORS.textSecondary} />
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+        )}
+
         <View style={{ height: 24 }} />
       </ScrollView>
 
       <ConfettiBurst ref={confetti} />
+
+      {/* Quick Add Modal */}
+      <Modal visible={quickModalVisible} transparent animationType="slide" onRequestClose={() => setQuickModalVisible(false)}>
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setQuickModalVisible(false)}>
+          <TouchableOpacity style={styles.modalSheet} activeOpacity={1} onPress={() => {}}>
+            <View style={styles.modalHandle} />
+            <Text style={styles.modalTitle}>Quick Add</Text>
+            <Text style={styles.modalTime}>Add restaurant/snack calories without searching</Text>
+            <Text style={styles.editLabel}>Description (optional)</Text>
+            <TextInput style={[styles.editInput, { fontSize: 15, marginBottom: 12 }]} value={quickLabel} onChangeText={setQuickLabel} placeholder="e.g. Pizza at restaurant" placeholderTextColor={COLORS.textSecondary} />
+            <View style={styles.editRow}>
+              <View style={styles.editField}>
+                <Text style={styles.editLabel}>Calories</Text>
+                <TextInput style={styles.editInput} value={quickKcal} onChangeText={setQuickKcal} keyboardType="numeric" selectTextOnFocus placeholderTextColor={COLORS.textSecondary} placeholder="0" />
+              </View>
+              <View style={styles.editField}>
+                <Text style={styles.editLabel}>Protein (g)</Text>
+                <TextInput style={styles.editInput} value={quickProtein} onChangeText={setQuickProtein} keyboardType="numeric" selectTextOnFocus placeholderTextColor={COLORS.textSecondary} placeholder="0" />
+              </View>
+            </View>
+            <TouchableOpacity style={styles.btnPrimary} onPress={handleQuickAdd}>
+              <Ionicons name="add-circle" size={20} color="#fff" />
+              <Text style={styles.btnPrimaryText}>Add calories</Text>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
 
       {/* Swap Meal Modal */}
       <Modal
@@ -406,6 +484,15 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.border,
     marginVertical: 4,
   },
+  actionRow: { flexDirection: 'row', paddingHorizontal: 16, gap: 10, marginBottom: 10 },
+  actionBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: colors.primarySoft, borderRadius: 999, paddingVertical: 9, borderWidth: 1, borderColor: colors.primary },
+  actionBtnAlt: { backgroundColor: colors.mintSoft, borderColor: colors.mint },
+  actionBtnText: { color: colors.primary, fontSize: 13, fontWeight: '700' },
+  qaSection: { backgroundColor: COLORS.card, borderRadius: 12, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: COLORS.border, gap: 8 },
+  qaTitle: { fontSize: 12, fontWeight: '700', color: COLORS.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 },
+  qaRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  qaLabel: { fontSize: 14, fontWeight: '600', color: COLORS.textPrimary },
+  qaMacros: { fontSize: 12, color: COLORS.textSecondary },
   scroll: { paddingHorizontal: 16 },
   modalOverlay: {
     flex: 1,

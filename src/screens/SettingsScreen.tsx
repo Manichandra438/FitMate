@@ -5,6 +5,7 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  Switch,
   Alert,
   Image,
 } from 'react-native';
@@ -19,14 +20,14 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '../services/firebase';
 import { changePassword, deleteAccount, friendlyAuthError, getAuthProvider, signOutAll } from '../services/auth';
-import { clearDirty, deleteCloudData, flush, startSync, stopSync } from '../services/sync';
+import { clearDirty, clearLastUid, deleteCloudData, flush, startSync, stopSync } from '../services/sync';
 import { exportCSV, exportJSON } from '../services/export';
 import { scheduleWidgetRefresh } from '../widgets/updateWidget';
 import SectionHeader from '../components/ui/SectionHeader';
 
 export default function SettingsScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { profile, mealPlan, exercisePlan, resetAll } = useFitStore();
+  const { profile, mealPlan, exercisePlan, notifPrefs, setNotifPrefs, resetAll } = useFitStore();
   const [busy, setBusy] = useState<string | null>(null);
   const [authProvider, setAuthProvider] = useState(() => getAuthProvider());
   const user = auth.currentUser;
@@ -58,9 +59,19 @@ export default function SettingsScreen() {
 
   const handleReschedule = () =>
     run('notif', async () => {
-      await scheduleAllNotifications(mealPlan, exercisePlan, profile);
+      await scheduleAllNotifications(mealPlan, exercisePlan, profile, notifPrefs);
       Alert.alert('Notifications', 'Notifications rescheduled successfully!');
     });
+
+  const handleToggleNotif = async (key: keyof typeof notifPrefs, value: boolean) => {
+    const updated = { ...notifPrefs, [key]: value };
+    setNotifPrefs({ [key]: value });
+    try {
+      await scheduleAllNotifications(mealPlan, exercisePlan, profile, updated);
+    } catch (err) {
+      console.warn('Could not reschedule after toggle:', err);
+    }
+  };
 
   const handleChangePassword = () => {
     let currentPw = '';
@@ -101,8 +112,8 @@ export default function SettingsScreen() {
             stopSync(); // increments syncGeneration — kills any in-flight log fetch
             await clearDirty();
             await signOutAll();
-            resetAll();
-            await AsyncStorage.removeItem('fitmate-storage');
+            // Keep local store intact — same user gets instant data on re-login.
+            // startSync() wipes automatically when a different user signs in.
           }),
       },
     ]);
@@ -133,8 +144,7 @@ export default function SettingsScreen() {
                 }
               }
               resetAll();
-              // Wipe AsyncStorage directly so the persist layer has no stale snapshot.
-              await AsyncStorage.removeItem('fitmate-storage');
+              await AsyncStorage.removeMany(['fitmate-storage', 'fitmate-last-uid']);
               scheduleWidgetRefresh();
               // Only restart sync if cloud was actually cleared — otherwise
               // startSync would re-download the old data and undo the reset.
@@ -189,7 +199,7 @@ export default function SettingsScreen() {
                               throw new Error(friendlyAuthError(err));
                             }
                             resetAll();
-                            await AsyncStorage.removeItem('fitmate-storage');
+                            await AsyncStorage.removeMany(['fitmate-storage', 'fitmate-last-uid']);
                             scheduleWidgetRefresh();
                           });
                         },
@@ -209,7 +219,7 @@ export default function SettingsScreen() {
                         }
                         await deleteAccount();
                         resetAll();
-                        await AsyncStorage.removeItem('fitmate-storage');
+                        await AsyncStorage.removeMany(['fitmate-storage', 'fitmate-last-uid']);
                         scheduleWidgetRefresh();
                       });
                     }
@@ -325,10 +335,51 @@ export default function SettingsScreen() {
 
       {/* Notifications */}
       <SectionHeader title="Notifications" />
+      <View style={styles.notifCard}>
+        <NotifToggle
+          icon="restaurant"
+          label="Meal reminders"
+          sub="5 min before each planned meal"
+          value={notifPrefs.meals}
+          onToggle={(v) => handleToggleNotif('meals', v)}
+        />
+        <View style={styles.notifDivider} />
+        <NotifToggle
+          icon="water"
+          label="Water reminders"
+          sub="Every 2 hours between wake-up and sleep"
+          value={notifPrefs.water}
+          onToggle={(v) => handleToggleNotif('water', v)}
+        />
+        <View style={styles.notifDivider} />
+        <NotifToggle
+          icon="scale"
+          label="Weight reminder"
+          sub="Morning weigh-in, 15 min after wake-up"
+          value={notifPrefs.weight}
+          onToggle={(v) => handleToggleNotif('weight', v)}
+        />
+        <View style={styles.notifDivider} />
+        <NotifToggle
+          icon="barbell"
+          label="Exercise reminder"
+          sub="30 min after wake-up on workout days"
+          value={notifPrefs.exercise}
+          onToggle={(v) => handleToggleNotif('exercise', v)}
+        />
+        <View style={styles.notifDivider} />
+        <NotifToggle
+          icon="bulb"
+          label="Smart nudges"
+          sub="Context-aware reminders (missed meal, low water, pending workout)"
+          value={notifPrefs.smartNudges}
+          onToggle={(v) => handleToggleNotif('smartNudges', v)}
+        />
+      </View>
       <Row
-        icon="notifications"
-        label="Reschedule notifications"
-        sub="Re-apply meal, water, weight & exercise reminders"
+        icon="refresh"
+        label="Reschedule all notifications"
+        sub="Re-apply current settings to the notification queue"
         onPress={handleReschedule}
         loading={busy === 'notif'}
       />
@@ -412,6 +463,38 @@ function PlanStat({ value, unit }: { value: string; unit: string }) {
   );
 }
 
+function NotifToggle({
+  icon,
+  label,
+  sub,
+  value,
+  onToggle,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  sub: string;
+  value: boolean;
+  onToggle: (v: boolean) => void;
+}) {
+  return (
+    <View style={styles.notifRow}>
+      <View style={[styles.rowIcon, { backgroundColor: value ? colors.primarySoft : colors.surfaceHigh }]}>
+        <Ionicons name={icon} size={18} color={value ? colors.primary : colors.textMuted} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.rowLabel}>{label}</Text>
+        <Text style={styles.rowSub}>{sub}</Text>
+      </View>
+      <Switch
+        value={value}
+        onValueChange={onToggle}
+        trackColor={{ false: colors.border, true: colors.primarySoft }}
+        thumbColor={value ? colors.primary : colors.textMuted}
+      />
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   scroll: { paddingHorizontal: spacing.lg, paddingTop: 56 },
@@ -484,4 +567,23 @@ const styles = StyleSheet.create({
   },
   aboutTitle: { color: colors.textPrimary, fontSize: 17, fontWeight: '800', marginBottom: 8 },
   aboutText: { color: colors.textSecondary, fontSize: 13, textAlign: 'center', lineHeight: 19 },
+  notifCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: spacing.sm,
+    overflow: 'hidden',
+  },
+  notifRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    padding: spacing.lg,
+  },
+  notifDivider: {
+    height: 1,
+    backgroundColor: colors.border,
+    marginLeft: 56 + spacing.lg * 2,
+  },
 });
