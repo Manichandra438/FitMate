@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   ScrollView,
   TouchableOpacity,
   StatusBar,
+  Alert,
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -22,12 +23,17 @@ import FadeSlideIn from '../components/anim/FadeSlideIn';
 import WaterGlass from '../components/anim/WaterGlass';
 import { useCountUp } from '../hooks/useCountUp';
 import WeeklyReportModal from '../components/WeeklyReportModal';
+import BackfillQuickAddModal from '../components/BackfillQuickAddModal';
+import FastingTimerCard from '../components/FastingTimerCard';
 import { computeBadges } from '../services/badges';
 import { useStepCounter } from '../hooks/useStepCounter';
+import { logKcal } from '../services/statsHelpers';
 
 export default function HomeScreen() {
   const navigation = useNavigation<any>();
   const [reportVisible, setReportVisible] = useState(false);
+  const [backfillVisible, setBackfillVisible] = useState(false);
+  const [bannerDismissed, setBannerDismissed] = useState(false);
   const {
     profile,
     logs,
@@ -41,6 +47,7 @@ export default function HomeScreen() {
     getStreak,
     ensureTodayLog,
     getWeeklyBank,
+    useStreakFreeze,
   } = useFitStore();
 
   useFocusEffect(
@@ -51,7 +58,7 @@ export default function HomeScreen() {
   );
 
   const log = getTodayLog();
-  const { kcal, protein } = getTodayTotals();
+  const { kcal, protein, carbs, fat } = getTodayTotals();
   const streak = getStreak();
   const isOverBudget = kcal > profile.calorieGoal;
   const displayKcal = isOverBudget ? kcal - profile.calorieGoal : profile.calorieGoal - kcal;
@@ -59,6 +66,28 @@ export default function HomeScreen() {
   const displayAnimated = useCountUp(displayKcal);
   const weeklyBank = getWeeklyBank();
   const { steps, available: stepsAvailable, kcalBurned } = useStepCounter();
+
+  const yesterday = dayjs().subtract(1, 'day').format('YYYY-MM-DD');
+  const missedYesterday = useMemo(() => logKcal(logs[yesterday]) === 0, [logs, yesterday]);
+  const freezeAvailable = !profile.streakFreezeUsedAt ||
+    dayjs().diff(dayjs(profile.streakFreezeUsedAt), 'day') >= 7;
+
+  const handleFreeze = () => {
+    Alert.alert(
+      'Use streak freeze?',
+      "Protect your streak for missing yesterday. Recharges every 7 days.",
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: '🛡️ Freeze it',
+          onPress: () => {
+            const ok = useStreakFreeze();
+            if (!ok) Alert.alert('Not available', 'Freeze recharges every 7 days.');
+          },
+        },
+      ]
+    );
+  };
 
   const hour = dayjs().hour();
   const greeting =
@@ -111,6 +140,42 @@ export default function HomeScreen() {
           </View>
         </FadeSlideIn>
 
+        {/* FastingTimerCard */}
+        <FastingTimerCard profile={profile} />
+
+        {/* Missed yesterday banner */}
+        {missedYesterday && !bannerDismissed && (
+          <View style={styles.missedBanner}>
+            <Text style={styles.missedEmoji}>📅</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.missedText}>No log for yesterday</Text>
+              <Text style={styles.missedSub}>Tap to add what you ate</Text>
+            </View>
+            {freezeAvailable && streak > 0 && (
+              <TouchableOpacity
+                style={styles.freezeBtn}
+                onPress={handleFreeze}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.freezeBtnText}>🛡️</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              style={styles.missedAddBtn}
+              onPress={() => setBackfillVisible(true)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.missedAddBtnText}>Add it</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setBannerDismissed(true)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Ionicons name="close" size={16} color={colors.textMuted} />
+            </TouchableOpacity>
+          </View>
+        )}
+
         {/* Hero calorie ring */}
         <FadeSlideIn delay={60}>
           <View style={styles.heroWrap}>
@@ -151,6 +216,31 @@ export default function HomeScreen() {
             onPress={() => navigation.navigate('Progress')}
           />
         </View>
+
+        {/* Macro breakdown */}
+        {(carbs > 0 || fat > 0) && (
+          <FadeSlideIn delay={90}>
+            <GradientCard style={styles.macrosCard}>
+              <Text style={styles.cardTitle}>🍽️ Macros today</Text>
+              <View style={styles.macrosRow}>
+                <View style={styles.macroItem}>
+                  <Text style={[styles.macroVal, { color: colors.sun }]}>{carbs}g</Text>
+                  <Text style={styles.macroLabel}>Carbs</Text>
+                </View>
+                <View style={styles.macroDivider} />
+                <View style={styles.macroItem}>
+                  <Text style={[styles.macroVal, { color: colors.orange }]}>{fat}g</Text>
+                  <Text style={styles.macroLabel}>Fat</Text>
+                </View>
+                <View style={styles.macroDivider} />
+                <View style={styles.macroItem}>
+                  <Text style={[styles.macroVal, { color: colors.primary }]}>{protein}g</Text>
+                  <Text style={styles.macroLabel}>Protein</Text>
+                </View>
+              </View>
+            </GradientCard>
+          </FadeSlideIn>
+        )}
 
         {/* Weekly calorie bank */}
         <FadeSlideIn delay={100}>
@@ -294,6 +384,12 @@ export default function HomeScreen() {
       </ScrollView>
 
       <WeeklyReportModal visible={reportVisible} onClose={() => setReportVisible(false)} />
+      <BackfillQuickAddModal
+        visible={backfillVisible}
+        onClose={() => setBackfillVisible(false)}
+        defaultDate={yesterday}
+        onAdded={() => setBannerDismissed(true)}
+      />
     </View>
   );
 }
@@ -427,4 +523,43 @@ const styles = StyleSheet.create({
   },
   exerciseTitle: { fontSize: 15, fontWeight: '700', color: colors.textPrimary },
   exerciseSub: { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
+
+  missedBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.sunSoft,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.sun,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  missedEmoji: { fontSize: 20 },
+  missedText: { fontSize: 13, fontWeight: '700', color: colors.textPrimary },
+  missedSub: { fontSize: 11, color: colors.textSecondary, marginTop: 1 },
+  missedAddBtn: {
+    backgroundColor: colors.sun,
+    borderRadius: radius.pill,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  missedAddBtnText: { fontSize: 12, fontWeight: '700', color: '#fff' },
+  freezeBtn: {
+    backgroundColor: colors.skySoft,
+    borderRadius: radius.pill,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: colors.sky,
+    marginRight: 4,
+  },
+  freezeBtnText: { fontSize: 14 },
+
+  macrosCard: { marginBottom: spacing.sm },
+  macrosRow: { flexDirection: 'row', alignItems: 'center' },
+  macroItem: { flex: 1, alignItems: 'center' },
+  macroVal: { fontSize: 18, fontWeight: '800' },
+  macroLabel: { fontSize: 11, color: colors.textSecondary, marginTop: 2 },
+  macroDivider: { width: 1, height: 32, backgroundColor: colors.border },
 });

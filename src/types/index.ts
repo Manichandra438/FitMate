@@ -44,6 +44,17 @@ export interface QuickAdd {
   label?: string;
   kcal: number;
   protein: number;
+  carbs?: number;
+  fat?: number;
+  addedAt: string;
+}
+
+export interface WorkoutEntry {
+  id: string;
+  activity: string;
+  emoji: string;
+  durationMin: number;
+  kcalBurned: number;
   addedAt: string;
 }
 
@@ -66,6 +77,7 @@ export interface DayLog {
   weight?: number;
   quickAdds?: QuickAdd[];
   steps?: number;
+  workouts?: WorkoutEntry[];
 }
 
 export interface DayExercise {
@@ -113,6 +125,7 @@ export interface UserProfile {
   goalDate?: string;
   favouriteFoods?: string[];
   fastingProtocol?: FastingProtocol;
+  streakFreezeUsedAt?: string;
 }
 
 export interface OnboardingAnswers {

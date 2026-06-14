@@ -17,12 +17,13 @@ import { MEAL_TEMPLATES } from '../data/mealTemplates';
 import { swapMealTemplate } from '../services/planGenerator';
 import { useFitStore } from '../store/useFitStore';
 import MealCard from '../components/MealCard';
+import BackfillQuickAddModal from '../components/BackfillQuickAddModal';
 import ConfettiBurst, { ConfettiBurstHandle } from '../components/anim/ConfettiBurst';
 import { success } from '../utils/haptics';
 
 export default function MealsScreen() {
   const navigation = useNavigation<any>();
-  const { mealPlan, logMeal, skipMeal, unlogMeal, updateSingleMeal, profile, getTodayLog, ensureTodayLog, getTodayTotals, copyYesterdayMeals, quickAdd, removeQuickAdd } =
+  const { mealPlan, logMeal, skipMeal, unlogMeal, updateSingleMeal, profile, getTodayLog, ensureTodayLog, getTodayTotals, copyYesterdayMeals, removeQuickAdd } =
     useFitStore();
   const [selectedMeal, setSelectedMeal] = useState<Meal | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
@@ -32,9 +33,6 @@ export default function MealsScreen() {
   const [swapVisible, setSwapVisible] = useState(false);
   const [swapOptions, setSwapOptions] = useState<MealTemplate[]>([]);
   const [quickModalVisible, setQuickModalVisible] = useState(false);
-  const [quickKcal, setQuickKcal] = useState('');
-  const [quickProtein, setQuickProtein] = useState('');
-  const [quickLabel, setQuickLabel] = useState('');
   const confetti = useRef<ConfettiBurstHandle>(null);
 
   useFocusEffect(useCallback(() => { ensureTodayLog(); }, []));
@@ -140,15 +138,6 @@ export default function MealsScreen() {
     else { success(); confetti.current?.burst(); }
   };
 
-  const handleQuickAdd = () => {
-    const k = parseFloat(quickKcal);
-    const p = parseFloat(quickProtein) || 0;
-    if (isNaN(k) || k <= 0) { Alert.alert('Invalid', 'Enter valid calories.'); return; }
-    quickAdd(k, p, quickLabel || undefined);
-    setQuickModalVisible(false);
-    setQuickKcal(''); setQuickProtein(''); setQuickLabel('');
-    success();
-  };
 
   return (
     <View style={styles.container}>
@@ -231,32 +220,11 @@ export default function MealsScreen() {
 
       <ConfettiBurst ref={confetti} />
 
-      {/* Quick Add Modal */}
-      <Modal visible={quickModalVisible} transparent animationType="slide" onRequestClose={() => setQuickModalVisible(false)}>
-        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setQuickModalVisible(false)}>
-          <TouchableOpacity style={styles.modalSheet} activeOpacity={1} onPress={() => {}}>
-            <View style={styles.modalHandle} />
-            <Text style={styles.modalTitle}>Quick Add</Text>
-            <Text style={styles.modalTime}>Add restaurant/snack calories without searching</Text>
-            <Text style={styles.editLabel}>Description (optional)</Text>
-            <TextInput style={[styles.editInput, { fontSize: 15, marginBottom: 12 }]} value={quickLabel} onChangeText={setQuickLabel} placeholder="e.g. Pizza at restaurant" placeholderTextColor={COLORS.textSecondary} />
-            <View style={styles.editRow}>
-              <View style={styles.editField}>
-                <Text style={styles.editLabel}>Calories</Text>
-                <TextInput style={styles.editInput} value={quickKcal} onChangeText={setQuickKcal} keyboardType="numeric" selectTextOnFocus placeholderTextColor={COLORS.textSecondary} placeholder="0" />
-              </View>
-              <View style={styles.editField}>
-                <Text style={styles.editLabel}>Protein (g)</Text>
-                <TextInput style={styles.editInput} value={quickProtein} onChangeText={setQuickProtein} keyboardType="numeric" selectTextOnFocus placeholderTextColor={COLORS.textSecondary} placeholder="0" />
-              </View>
-            </View>
-            <TouchableOpacity style={styles.btnPrimary} onPress={handleQuickAdd}>
-              <Ionicons name="add-circle" size={20} color="#fff" />
-              <Text style={styles.btnPrimaryText}>Add calories</Text>
-            </TouchableOpacity>
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
+      <BackfillQuickAddModal
+        visible={quickModalVisible}
+        onClose={() => setQuickModalVisible(false)}
+        onAdded={() => confetti.current?.burst()}
+      />
 
       {/* Swap Meal Modal */}
       <Modal

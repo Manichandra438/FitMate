@@ -11,6 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
 import { colors, radius, spacing, cardShadow } from '../theme';
 import { useFitStore } from '../store/useFitStore';
+import { logKcal, logProtein } from '../services/statsHelpers';
 
 interface Props {
   visible: boolean;
@@ -36,13 +37,11 @@ function getWeekData() {
   for (let i = 6; i >= 0; i--) {
     const date = dayjs().subtract(i, 'day').format('YYYY-MM-DD');
     const log = logs[date];
-    const kcal = log ? log.meals.filter((m) => m.logged).reduce((s, m) => s + m.totalKcal, 0) : 0;
-    const protein = log ? log.meals.filter((m) => m.logged).reduce((s, m) => s + m.totalProtein, 0) : 0;
     days.push({
       date,
       label: dayjs(date).format('ddd'),
-      kcal: Math.round(kcal),
-      protein: Math.round(protein),
+      kcal: logKcal(log),
+      protein: logProtein(log),
       water: log?.water ?? 0,
       mealsDone: log?.meals.filter((m) => m.logged).length ?? 0,
       mealsTotal: log?.meals.length ?? 0,
@@ -52,11 +51,14 @@ function getWeekData() {
   }
 
   const activeDays = days.filter((d) => d.kcal > 0 || d.water > 0 || d.exercised);
-  const avgKcal = activeDays.length
-    ? Math.round(activeDays.reduce((s, d) => s + d.kcal, 0) / activeDays.length)
+  // Calorie/protein averages divide only by days food was actually logged —
+  // water-only or exercise-only days would otherwise drag the average down.
+  const ateDays = days.filter((d) => d.kcal > 0);
+  const avgKcal = ateDays.length
+    ? Math.round(ateDays.reduce((s, d) => s + d.kcal, 0) / ateDays.length)
     : 0;
-  const avgProtein = activeDays.length
-    ? Math.round(activeDays.reduce((s, d) => s + d.protein, 0) / activeDays.length)
+  const avgProtein = ateDays.length
+    ? Math.round(ateDays.reduce((s, d) => s + d.protein, 0) / ateDays.length)
     : 0;
   const avgWater = activeDays.length
     ? Math.round((activeDays.reduce((s, d) => s + d.water, 0) / activeDays.length) * 10) / 10

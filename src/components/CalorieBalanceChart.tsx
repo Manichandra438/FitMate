@@ -4,6 +4,7 @@ import Svg, { Rect, Line, Text as SvgText, G } from 'react-native-svg';
 import dayjs from 'dayjs';
 import { colors, spacing } from '../theme';
 import { useFitStore } from '../store/useFitStore';
+import { logKcal } from '../services/statsHelpers';
 
 const CHART_W = 320;
 const CHART_H = 140;
@@ -21,10 +22,7 @@ export default function CalorieBalanceChart() {
 
   const days = Array.from({ length: 7 }, (_, i) => {
     const date = dayjs().subtract(6 - i, 'day').format('YYYY-MM-DD');
-    const log = logs[date];
-    const kcal = log
-      ? log.meals.filter((m) => m.logged).reduce((s, m) => s + m.totalKcal, 0)
-      : 0;
+    const kcal = logKcal(logs[date]);
     return { date, kcal, label: dayjs(date).format('dd') };
   });
 

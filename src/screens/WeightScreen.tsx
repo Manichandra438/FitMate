@@ -17,15 +17,46 @@ import { COLORS } from '../types';
 import { useFitStore } from '../store/useFitStore';
 import WeightChart from '../components/WeightChart';
 
-function projectGoalDate(history: { date: string; weight: number }[], goal: number) {
-  if (history.length < 2) return null;
-  const first = history[0];
-  const last = history[history.length - 1];
+function projectGoalDate(
+  history: { date: string; weight: number }[],
+  goal: number,
+  currentWeight: number,
+): { date: string | null; weeklyRate: number } {
+  const cutoff = dayjs().subtract(21, 'day').format('YYYY-MM-DD');
+  let recent = [...history]
+    .filter((w) => w.date >= cutoff)
+    .sort((a, b) => a.date.localeCompare(b.date));
+  if (recent.length < 2) {
+    const sorted = [...history].sort((a, b) => a.date.localeCompare(b.date));
+    if (sorted.length < 2) return { date: null, weeklyRate: 0 };
+    recent = sorted.slice(-5);
+  }
+  const first = recent[0];
+  const last = recent[recent.length - 1];
   const days = dayjs(last.date).diff(dayjs(first.date), 'day') || 1;
-  const dailyLoss = (first.weight - last.weight) / days;
-  if (dailyLoss <= 0) return null;
-  const daysLeft = (last.weight - goal) / dailyLoss;
-  return dayjs(last.date).add(Math.round(daysLeft), 'day').format('MMM D, YYYY');
+  const weeklyRate = Math.round(((last.weight - first.weight) / days) * 7 * 10) / 10;
+  const losingGoal = goal < currentWeight;
+  const gainingGoal = goal > currentWeight;
+  if (losingGoal && weeklyRate >= -0.05) return { date: null, weeklyRate };
+  if (gainingGoal && weeklyRate <= 0.05) return { date: null, weeklyRate };
+  if (Math.abs(currentWeight - goal) < 0.3) return { date: null, weeklyRate };
+  const kgToGo = goal - currentWeight;
+  const daysLeft = Math.round((kgToGo / weeklyRate) * 7);
+  if (daysLeft <= 0 || daysLeft > 730) return { date: null, weeklyRate };
+  return { date: dayjs().add(daysLeft, 'day').format('MMM D, YYYY'), weeklyRate };
+}
+
+function computeBMI(weightKg: number, heightCm: number): number {
+  if (!heightCm) return 0;
+  const h = heightCm / 100;
+  return Math.round((weightKg / (h * h)) * 10) / 10;
+}
+
+function bmiCategory(bmi: number): { label: string; color: string } {
+  if (bmi < 18.5) return { label: 'Underweight', color: '#58B9F4' };
+  if (bmi < 25) return { label: 'Normal weight', color: '#34C79A' };
+  if (bmi < 30) return { label: 'Overweight', color: '#FFC145' };
+  return { label: 'Obese', color: '#F4604F' };
 }
 
 export default function WeightScreen() {
@@ -42,7 +73,9 @@ export default function WeightScreen() {
 
   const todayLog = getTodayLog();
   const todayWeight = todayLog.weight;
-  const projection = projectGoalDate(weightHistory, profile.goalWeight);
+  const { date: projDate, weeklyRate } = projectGoalDate(weightHistory, profile.goalWeight, profile.currentWeight);
+  const bmi = computeBMI(profile.currentWeight, profile.heightCm);
+  const bmiInfo = bmiCategory(bmi);
 
   const totalLost =
     weightHistory.length > 0
@@ -100,18 +133,48 @@ export default function WeightScreen() {
           </View>
         </View>
 
+        {/* BMI Card */}
+        {bmi > 0 && (
+          <View style={styles.bmiCard}>
+            <View style={styles.bmiLeft}>
+              <Text style={styles.bmiTitle}>BMI</Text>
+              <Text style={[styles.bmiValue, { color: bmiInfo.color }]}>{bmi}</Text>
+              <Text style={[styles.bmiLabel, { color: bmiInfo.color }]}>{bmiInfo.label}</Text>
+            </View>
+            <View style={styles.bmiPills}>
+              {[
+                { label: 'Under', range: '<18.5', color: '#58B9F4', active: bmi < 18.5 },
+                { label: 'Normal', range: '18.5–25', color: '#34C79A', active: bmi >= 18.5 && bmi < 25 },
+                { label: 'Over', range: '25–30', color: '#FFC145', active: bmi >= 25 && bmi < 30 },
+                { label: 'Obese', range: '>30', color: '#F4604F', active: bmi >= 30 },
+              ].map((cat) => (
+                <View
+                  key={cat.label}
+                  style={[
+                    styles.bmiPill,
+                    cat.active && { backgroundColor: cat.color + '25', borderColor: cat.color },
+                  ]}
+                >
+                  <Text style={[styles.bmiPillLabel, cat.active && { color: cat.color, fontWeight: '700' }]}>
+                    {cat.label}
+                  </Text>
+                  <Text style={[styles.bmiPillRange, cat.active && { color: cat.color }]}>{cat.range}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
+
         {/* Projection */}
-        {projection && (
+        {projDate && (
           <View style={styles.projectionCard}>
             <Ionicons name="flag" size={18} color={COLORS.green} />
             <Text style={styles.projectionText}>
-              At this pace, you hit{' '}
-              <Text style={{ color: COLORS.green }}>{profile.goalWeight} kg</Text>{' '}
-              by{' '}
-              <Text style={{ color: COLORS.green, fontWeight: '700' }}>
-                {projection}
+              At <Text style={{ color: COLORS.green, fontWeight: '700' }}>
+                {weeklyRate > 0 ? '+' : ''}{weeklyRate} kg/week
               </Text>
-              !
+              , hit <Text style={{ color: COLORS.green }}>{profile.goalWeight} kg</Text>{' '}
+              by <Text style={{ color: COLORS.green, fontWeight: '700' }}>{projDate}</Text>
             </Text>
           </View>
         )}
@@ -247,6 +310,33 @@ const styles = StyleSheet.create({
     fontSize: 11,
     marginTop: 2,
   },
+  bmiCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+    backgroundColor: COLORS.card,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  bmiLeft: { alignItems: 'center', minWidth: 60 },
+  bmiTitle: { fontSize: 10, fontWeight: '700', color: COLORS.textSecondary, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 2 },
+  bmiValue: { fontSize: 28, fontWeight: '800' },
+  bmiLabel: { fontSize: 11, fontWeight: '600', marginTop: 2 },
+  bmiPills: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  bmiPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: 'center',
+  },
+  bmiPillLabel: { fontSize: 11, color: COLORS.textSecondary },
+  bmiPillRange: { fontSize: 10, color: COLORS.textSecondary, marginTop: 1 },
+
   projectionCard: {
     flexDirection: 'row',
     alignItems: 'center',

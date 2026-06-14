@@ -11,6 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
 import { COLORS } from '../types';
 import { useFitStore } from '../store/useFitStore';
+import { logKcal, logProtein } from '../services/statsHelpers';
 import CalorieBalanceChart from '../components/CalorieBalanceChart';
 import MacroDonut from '../components/MacroDonut';
 
@@ -35,32 +36,19 @@ export default function AnalyticsScreen() {
   );
   const weekLogs = weekDates.map((d) => logs[d]).filter(Boolean);
 
+  // Averages divide only by days food was actually logged — empty days that
+  // exist just because the app was opened (ensureTodayLog) must not drag the
+  // average down. logKcal/logProtein include meals + quick-adds.
+  const ateLogs = weekLogs.filter((l) => logKcal(l) > 0);
+
   const avgKcal =
-    weekLogs.length > 0
-      ? Math.round(
-          weekLogs.reduce(
-            (sum, l) =>
-              sum +
-              l.meals
-                .filter((m) => m.logged)
-                .reduce((s, m) => s + m.totalKcal, 0),
-            0
-          ) / weekLogs.length
-        )
+    ateLogs.length > 0
+      ? Math.round(ateLogs.reduce((s, l) => s + logKcal(l), 0) / ateLogs.length)
       : 0;
 
   const avgProtein =
-    weekLogs.length > 0
-      ? Math.round(
-          weekLogs.reduce(
-            (sum, l) =>
-              sum +
-              l.meals
-                .filter((m) => m.logged)
-                .reduce((s, m) => s + m.totalProtein, 0),
-            0
-          ) / weekLogs.length
-        )
+    ateLogs.length > 0
+      ? Math.round(ateLogs.reduce((s, l) => s + logProtein(l), 0) / ateLogs.length)
       : 0;
 
   const mealsHitDays = weekLogs.filter(
@@ -137,19 +125,13 @@ export default function AnalyticsScreen() {
                 <View style={styles.recapGrid}>
                   <View style={styles.recapItem}>
                     <Text style={[styles.recapValue, { color: COLORS.green }]}>
-                      {yesterdayLog.meals
-                        .filter((m) => m.logged)
-                        .reduce((s, m) => s + m.totalKcal, 0)}
+                      {logKcal(yesterdayLog)}
                     </Text>
                     <Text style={styles.recapLabel}>kcal eaten</Text>
                   </View>
                   <View style={styles.recapItem}>
                     <Text style={[styles.recapValue, { color: COLORS.orange }]}>
-                      {Math.round(
-                        yesterdayLog.meals
-                          .filter((m) => m.logged)
-                          .reduce((s, m) => s + m.totalProtein, 0)
-                      )}g
+                      {logProtein(yesterdayLog)}g
                     </Text>
                     <Text style={styles.recapLabel}>protein</Text>
                   </View>
@@ -295,12 +277,7 @@ export default function AnalyticsScreen() {
             <View style={styles.card}>
               <Text style={styles.cardTitle}>Daily Breakdown</Text>
               {weekDates.map((date) => {
-                const l = logs[date];
-                const kcal = l
-                  ? l.meals
-                      .filter((m) => m.logged)
-                      .reduce((s, m) => s + m.totalKcal, 0)
-                  : 0;
+                const kcal = logKcal(logs[date]);
                 const pct = Math.min(kcal / profile.calorieGoal, 1);
                 const isToday = date === dayjs().format('YYYY-MM-DD');
                 return (

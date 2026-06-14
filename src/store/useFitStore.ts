@@ -4,7 +4,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import dayjs from 'dayjs';
 import { DEFAULT_EXERCISE_PLAN } from '../data/exercisePlan';
 import { generatePlan } from '../services/planGenerator';
-import { computeStreak, computeTodayTotals, todayStr } from '../services/statsHelpers';
+import { computeStreak, computeTodayTotals, logKcal, todayStr } from '../services/statsHelpers';
+// logCarbs/logFat used via computeTodayTotals — no direct import needed
 import {
   BodyMeasurement,
   DayLog,
@@ -18,6 +19,7 @@ import {
   QuickAdd,
   UserProfile,
   WeightEntry,
+  WorkoutEntry,
 } from '../types';
 
 const currentDayKey = () => dayjs().format('ddd').toLowerCase() as keyof ExercisePlan;
@@ -110,9 +112,9 @@ interface FitState {
   ensureTodayLog: () => void;
   getTodayLog: () => DayLog;
   getStreak: () => number;
-  getTodayTotals: () => { kcal: number; protein: number };
+  getTodayTotals: () => { kcal: number; protein: number; carbs: number; fat: number };
   copyYesterdayMeals: () => boolean;
-  quickAdd: (kcal: number, protein: number, label?: string) => void;
+  quickAdd: (kcal: number, protein: number, label?: string, date?: string, carbs?: number, fat?: number) => void;
   removeQuickAdd: (id: string) => void;
   updateSteps: (steps: number) => void;
   addCustomFood: (food: Omit<FoodItem, 'id' | 'isCustom'>) => void;
@@ -120,6 +122,10 @@ interface FitState {
   addBodyMeasurement: (m: BodyMeasurement) => void;
   getWeeklyBank: () => { budget: number; consumed: number; bank: number };
   setNotifPrefs: (prefs: Partial<NotifPrefs>) => void;
+  addWorkout: (entry: Pick<WorkoutEntry, 'activity' | 'emoji' | 'durationMin' | 'kcalBurned'>) => void;
+  removeWorkout: (id: string) => void;
+  frozenDates: string[];
+  useStreakFreeze: () => boolean;
 }
 
 export const useFitStore = create<FitState>()(
@@ -133,6 +139,7 @@ export const useFitStore = create<FitState>()(
       bodyMeasurements: [],
       customFoods: [],
       notifPrefs: DEFAULT_NOTIF_PREFS,
+      frozenDates: [],
 
       setProfile: (profile) =>
         set((s) => ({ profile: { ...s.profile, ...profile } })),
@@ -413,14 +420,11 @@ export const useFitStore = create<FitState>()(
       },
 
       getTodayTotals: () => {
-        const log = get().logs[todayStr()];
-        const base = computeTodayTotals(log);
-        const quickKcal = (log?.quickAdds ?? []).reduce((s, q) => s + q.kcal, 0);
-        const quickProtein = (log?.quickAdds ?? []).reduce((s, q) => s + q.protein, 0);
-        return { kcal: base.kcal + quickKcal, protein: Math.round(base.protein + quickProtein) };
+        // computeTodayTotals already includes meals + quick-adds.
+        return computeTodayTotals(get().logs[todayStr()]);
       },
 
-      getStreak: () => computeStreak(get().logs),
+      getStreak: () => computeStreak(get().logs, get().frozenDates),
 
       copyYesterdayMeals: () => {
         const today = todayStr();
@@ -447,22 +451,40 @@ export const useFitStore = create<FitState>()(
         return true;
       },
 
-      quickAdd: (kcal, protein, label) => {
-        const date = todayStr();
-        get().ensureTodayLog();
+      quickAdd: (kcal, protein, label, date, carbs, fat) => {
+        const targetDate = date ?? todayStr();
+        if (targetDate === todayStr()) {
+          get().ensureTodayLog();
+        } else if (!get().logs[targetDate]) {
+          set((s) => ({
+            logs: {
+              ...s.logs,
+              [targetDate]: {
+                date: targetDate,
+                wakeUpTime: undefined,
+                meals: [],
+                water: 0,
+                exercise: { done: false, skipped: false },
+                weight: undefined,
+              },
+            },
+          }));
+        }
         const qa: QuickAdd = {
           id: `qa_${Date.now()}`,
           label,
           kcal: Math.round(kcal),
           protein: Math.round(protein * 10) / 10,
+          carbs: carbs !== undefined ? Math.round(carbs) : undefined,
+          fat: fat !== undefined ? Math.round(fat * 10) / 10 : undefined,
           addedAt: dayjs().format('h:mm A'),
         };
         set((s) => ({
           logs: {
             ...s.logs,
-            [date]: {
-              ...s.logs[date],
-              quickAdds: [...(s.logs[date]?.quickAdds ?? []), qa],
+            [targetDate]: {
+              ...s.logs[targetDate],
+              quickAdds: [...(s.logs[targetDate]?.quickAdds ?? []), qa],
             },
           },
         }));
@@ -508,24 +530,67 @@ export const useFitStore = create<FitState>()(
         const days = Array.from({ length: 7 }, (_, i) =>
           dayjs().subtract(i, 'day').format('YYYY-MM-DD')
         );
-        const consumed = days.reduce((sum, d) => {
-          const log = logs[d];
-          if (!log) return sum;
-          const meals = log.meals.filter((m) => m.logged).reduce((s, m) => s + m.totalKcal, 0);
-          const qa = (log.quickAdds ?? []).reduce((s, q) => s + q.kcal, 0);
-          return sum + meals + qa;
-        }, 0);
+        const consumed = days.reduce((sum, d) => sum + logKcal(logs[d]), 0);
         const budget = profile.calorieGoal * 7;
         return { budget, consumed: Math.round(consumed), bank: budget - Math.round(consumed) };
       },
 
       setNotifPrefs: (prefs) =>
         set((s) => ({ notifPrefs: { ...s.notifPrefs, ...prefs } })),
+
+      useStreakFreeze: () => {
+        const { profile, frozenDates } = get();
+        if (profile.streakFreezeUsedAt) {
+          const daysSince = dayjs().diff(dayjs(profile.streakFreezeUsedAt), 'day');
+          if (daysSince < 7) return false;
+        }
+        const yesterday = dayjs().subtract(1, 'day').format('YYYY-MM-DD');
+        set((s) => ({
+          frozenDates: [...new Set([...s.frozenDates, yesterday])],
+          profile: { ...s.profile, streakFreezeUsedAt: todayStr() },
+        }));
+        return true;
+      },
+
+      addWorkout: ({ activity, emoji, durationMin, kcalBurned }) => {
+        const date = todayStr();
+        get().ensureTodayLog();
+        const entry: WorkoutEntry = {
+          id: `wk_${Date.now()}`,
+          activity,
+          emoji,
+          durationMin,
+          kcalBurned,
+          addedAt: dayjs().format('h:mm A'),
+        };
+        set((s) => ({
+          logs: {
+            ...s.logs,
+            [date]: {
+              ...s.logs[date],
+              workouts: [...(s.logs[date]?.workouts ?? []), entry],
+            },
+          },
+        }));
+      },
+
+      removeWorkout: (id) => {
+        const date = todayStr();
+        set((s) => ({
+          logs: {
+            ...s.logs,
+            [date]: {
+              ...s.logs[date],
+              workouts: (s.logs[date]?.workouts ?? []).filter((w) => w.id !== id),
+            },
+          },
+        }));
+      },
     }),
     {
       name: 'fitmate-storage',
       storage: createJSONStorage(() => AsyncStorage),
-      version: 4,
+      version: 5,
       migrate: (persisted: any, version) => {
         if (version < 2 && persisted) {
           persisted.profile = { ...DEFAULT_PROFILE, ...persisted.profile, onboarded: false };
@@ -536,6 +601,9 @@ export const useFitStore = create<FitState>()(
         }
         if (version < 4 && persisted) {
           persisted.notifPrefs = { ...DEFAULT_NOTIF_PREFS, ...persisted.notifPrefs };
+        }
+        if (version < 5 && persisted) {
+          persisted.frozenDates = persisted.frozenDates ?? [];
         }
         return persisted;
       },

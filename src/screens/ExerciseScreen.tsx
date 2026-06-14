@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -8,19 +8,20 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
+  Modal,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
 import { COLORS, ExercisePlan } from '../types';
-import { colors } from '../theme';
+import { colors, radius, spacing, cardShadow } from '../theme';
 import { useFitStore } from '../store/useFitStore';
 import { DAY_LABELS } from '../data/exercisePlan';
+import { ACTIVITIES, calcKcal } from '../data/exerciseActivities';
 import ConfettiBurst, { ConfettiBurstHandle } from '../components/anim/ConfettiBurst';
 import { success } from '../utils/haptics';
-import { useRef } from 'react';
 
-const EXERCISE_ICONS: Record<string, string> = {
+const PLAN_ICONS: Record<string, string> = {
   'Walk': '🚶',
   'Stretching': '🧘',
   'Stair Climbing': '🏗️',
@@ -29,9 +30,18 @@ const EXERCISE_ICONS: Record<string, string> = {
 };
 
 export default function ExerciseScreen() {
-  const { exercisePlan, logExercise, skipExercise, ensureTodayLog, getTodayLog } =
-    useFitStore();
+  const {
+    exercisePlan, logExercise, skipExercise, ensureTodayLog,
+    getTodayLog, addWorkout, removeWorkout, profile, logs,
+  } = useFitStore();
+
   const [duration, setDuration] = useState('');
+  const [addVisible, setAddVisible] = useState(false);
+  const [selectedActivity, setSelectedActivity] = useState<typeof ACTIVITIES[0] | null>(null);
+  const [customName, setCustomName] = useState('');
+  const [workoutDuration, setWorkoutDuration] = useState('30');
+  const [workoutKcal, setWorkoutKcal] = useState('');
+  const [kcalEdited, setKcalEdited] = useState(false);
   const confetti = useRef<ConfettiBurstHandle>(null);
 
   useFocusEffect(useCallback(() => { ensureTodayLog(); }, []));
@@ -39,10 +49,75 @@ export default function ExerciseScreen() {
   const log = getTodayLog();
   const dayKey = dayjs().format('ddd').toLowerCase() as keyof ExercisePlan;
   const todayExercise = exercisePlan[dayKey];
-
   const isLogged = log.exercise.done;
   const isSkipped = log.exercise.skipped;
   const isPending = !isLogged && !isSkipped;
+  const todayWorkouts = log.workouts ?? [];
+  const bodyWeight = profile.currentWeight || 70;
+
+  const weekStats = useMemo(() => {
+    let totalMin = 0;
+    let totalKcal = 0;
+    let totalSessions = 0;
+    for (let i = 0; i < 7; i++) {
+      const date = dayjs().subtract(i, 'day').format('YYYY-MM-DD');
+      const wks = logs[date]?.workouts ?? [];
+      totalSessions += wks.length;
+      totalMin += wks.reduce((s, w) => s + w.durationMin, 0);
+      totalKcal += wks.reduce((s, w) => s + w.kcalBurned, 0);
+    }
+    return { totalMin, totalKcal, totalSessions };
+  }, [logs]);
+
+  const autoKcal = useMemo(() => {
+    if (!selectedActivity) return 0;
+    const dur = parseInt(workoutDuration, 10) || 0;
+    return calcKcal(selectedActivity.met, bodyWeight, dur);
+  }, [selectedActivity, workoutDuration, bodyWeight]);
+
+  const handlePickActivity = (act: typeof ACTIVITIES[0]) => {
+    setSelectedActivity(act);
+    setKcalEdited(false);
+    const dur = parseInt(workoutDuration, 10) || 30;
+    setWorkoutKcal(String(calcKcal(act.met, bodyWeight, dur)));
+  };
+
+  const handleDurationChange = (val: string) => {
+    setWorkoutDuration(val);
+    if (!kcalEdited && selectedActivity) {
+      const dur = parseInt(val, 10) || 0;
+      setWorkoutKcal(String(calcKcal(selectedActivity.met, bodyWeight, dur)));
+    }
+  };
+
+  const openAdd = () => {
+    setSelectedActivity(null);
+    setCustomName('');
+    setWorkoutDuration('30');
+    setWorkoutKcal('');
+    setKcalEdited(false);
+    setAddVisible(true);
+  };
+
+  const canLog =
+    !!selectedActivity &&
+    (selectedActivity.name !== 'Other' || customName.trim().length > 0) &&
+    parseInt(workoutDuration, 10) > 0;
+
+  const handleLogWorkout = () => {
+    if (!selectedActivity) return;
+    const dur = parseInt(workoutDuration, 10);
+    if (!dur || dur <= 0) return;
+    const name =
+      selectedActivity.name === 'Other'
+        ? customName.trim() || 'Other'
+        : selectedActivity.name;
+    const kcal = parseInt(workoutKcal, 10) || 0;
+    addWorkout({ activity: name, emoji: selectedActivity.emoji, durationMin: dur, kcalBurned: kcal });
+    setAddVisible(false);
+    success();
+    confetti.current?.burst();
+  };
 
   const handleDone = () => {
     const d = parseInt(duration, 10) || todayExercise.duration;
@@ -59,41 +134,49 @@ export default function ExerciseScreen() {
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <ScrollView
-        contentContainerStyle={styles.scroll}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Header */}
+      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+
         <View style={styles.header}>
           <Text style={styles.title}>Exercise</Text>
           <Text style={styles.subtitle}>{dayjs().format('dddd, MMMM D')}</Text>
         </View>
 
-        {/* Today's exercise */}
-        <View
-          style={[
-            styles.todayCard,
-            todayExercise.isRest && styles.restCard,
-            isLogged && styles.loggedCard,
-            isSkipped && styles.skippedCard,
-          ]}
-        >
-          <Text style={styles.exerciseEmoji}>
-            {EXERCISE_ICONS[todayExercise.activity] ?? '🏃'}
-          </Text>
+        {/* Week stats bar */}
+        {weekStats.totalSessions > 0 && (
+          <View style={[styles.weekStatsRow, cardShadow]}>
+            <View style={styles.weekStat}>
+              <Text style={styles.weekStatVal}>{weekStats.totalSessions}</Text>
+              <Text style={styles.weekStatLabel}>workouts</Text>
+            </View>
+            <View style={styles.weekStatDivider} />
+            <View style={styles.weekStat}>
+              <Text style={styles.weekStatVal}>{weekStats.totalMin}</Text>
+              <Text style={styles.weekStatLabel}>min this week</Text>
+            </View>
+            <View style={styles.weekStatDivider} />
+            <View style={styles.weekStat}>
+              <Text style={styles.weekStatVal}>{weekStats.totalKcal}</Text>
+              <Text style={styles.weekStatLabel}>kcal burned</Text>
+            </View>
+          </View>
+        )}
+
+        {/* Today's plan */}
+        <View style={[
+          styles.todayCard,
+          todayExercise.isRest && styles.restCard,
+          isLogged && styles.loggedCard,
+          isSkipped && styles.skippedCard,
+        ]}>
+          <Text style={styles.exerciseEmoji}>{PLAN_ICONS[todayExercise.activity] ?? '🏃'}</Text>
           <Text style={styles.exerciseName}>{todayExercise.activity}</Text>
           {!todayExercise.isRest && (
-            <Text style={styles.exerciseDuration}>
-              Target: {todayExercise.duration} min
-            </Text>
+            <Text style={styles.exerciseDuration}>Target: {todayExercise.duration} min</Text>
           )}
-
           {isLogged && (
             <View style={styles.doneRow}>
               <Ionicons name="checkmark-circle" size={20} color={COLORS.green} />
-              <Text style={styles.doneText}>
-                Done! {log.exercise.duration} min
-              </Text>
+              <Text style={styles.doneText}>Done! {log.exercise.duration} min</Text>
             </View>
           )}
           {isSkipped && (
@@ -104,10 +187,9 @@ export default function ExerciseScreen() {
           )}
         </View>
 
-        {/* Actions */}
         {isPending && !todayExercise.isRest && (
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>Log Today's Exercise</Text>
+            <Text style={styles.cardTitle}>Log Today's Plan</Text>
             <View style={styles.durationRow}>
               <TextInput
                 style={styles.durationInput}
@@ -119,14 +201,12 @@ export default function ExerciseScreen() {
               />
               <Text style={styles.minLabel}>min</Text>
             </View>
-
             <TouchableOpacity style={styles.btnDone} onPress={handleDone}>
               <Ionicons name="checkmark-circle" size={20} color="#fff" />
               <Text style={styles.btnDoneText}>
                 Mark as done ({duration || todayExercise.duration} min)
               </Text>
             </TouchableOpacity>
-
             <TouchableOpacity style={styles.btnSkip} onPress={skipExercise}>
               <Text style={styles.btnSkipText}>Skip today</Text>
             </TouchableOpacity>
@@ -135,47 +215,70 @@ export default function ExerciseScreen() {
 
         {todayExercise.isRest && isPending && (
           <View style={styles.restMessage}>
-            <Text style={styles.restMessageText}>
-              Today is your rest day. Take it easy! 💤
-            </Text>
-            <TouchableOpacity
-              style={styles.btnDone}
-              onPress={() => logExercise(0)}
-            >
+            <Text style={styles.restMessageText}>Today is your rest day. Take it easy! 💤</Text>
+            <TouchableOpacity style={styles.btnDone} onPress={() => logExercise(0)}>
               <Text style={styles.btnDoneText}>Mark rest day done</Text>
             </TouchableOpacity>
           </View>
         )}
 
-        {/* Weekly plan */}
+        {/* Workouts logged today */}
+        <View style={styles.card}>
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.cardTitle}>Today's workouts</Text>
+            <TouchableOpacity style={styles.addBtn} onPress={openAdd} activeOpacity={0.7}>
+              <Ionicons name="add" size={15} color="#fff" />
+              <Text style={styles.addBtnText}>Add</Text>
+            </TouchableOpacity>
+          </View>
+
+          {todayWorkouts.length === 0 ? (
+            <TouchableOpacity style={styles.emptyWorkout} onPress={openAdd} activeOpacity={0.7}>
+              <Ionicons name="fitness-outline" size={28} color={colors.textMuted} />
+              <Text style={styles.emptyText}>No workouts logged yet</Text>
+              <Text style={styles.emptySub}>Running, gym, yoga — log anything here</Text>
+            </TouchableOpacity>
+          ) : (
+            todayWorkouts.map((w) => (
+              <View key={w.id} style={styles.workoutRow}>
+                <Text style={styles.workoutEmoji}>{w.emoji}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.workoutName}>{w.activity}</Text>
+                  <Text style={styles.workoutMeta}>
+                    {w.durationMin} min · {w.kcalBurned} kcal · {w.addedAt}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => removeWorkout(w.id)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Ionicons name="close-circle" size={20} color={colors.textMuted} />
+                </TouchableOpacity>
+              </View>
+            ))
+          )}
+        </View>
+
+        {/* Weekly rotation */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Weekly Rotation</Text>
           {weekDays.map((day, i) => {
             const ex = exercisePlan[day];
             const isToday = i === todayIndex;
             return (
-              <View
-                key={day}
-                style={[styles.weekRow, isToday && styles.weekRowToday]}
-              >
+              <View key={day} style={[styles.weekRow, isToday && styles.weekRowToday]}>
                 <View style={styles.weekLeft}>
                   <Text style={[styles.weekDay, isToday && { color: COLORS.green }]}>
                     {DAY_LABELS[day].slice(0, 3)}
                   </Text>
-                  {isToday && (
-                    <View style={styles.todayDot} />
-                  )}
+                  {isToday && <View style={styles.todayDot} />}
                 </View>
-                <Text style={styles.weekEmoji}>
-                  {EXERCISE_ICONS[ex.activity] ?? '🏃'}
-                </Text>
+                <Text style={styles.weekEmoji}>{PLAN_ICONS[ex.activity] ?? '🏃'}</Text>
                 <View style={styles.weekRight}>
                   <Text style={[styles.weekActivity, isToday && { color: COLORS.textPrimary }]}>
                     {ex.activity}
                   </Text>
-                  {!ex.isRest && (
-                    <Text style={styles.weekDuration}>{ex.duration} min</Text>
-                  )}
+                  {!ex.isRest && <Text style={styles.weekDuration}>{ex.duration} min</Text>}
                 </View>
               </View>
             );
@@ -184,7 +287,92 @@ export default function ExerciseScreen() {
 
         <View style={{ height: 24 }} />
       </ScrollView>
+
       <ConfettiBurst ref={confetti} />
+
+      {/* Add Workout Modal */}
+      <Modal visible={addVisible} transparent animationType="slide" onRequestClose={() => setAddVisible(false)}>
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setAddVisible(false)}>
+          <TouchableOpacity style={styles.modalSheet} activeOpacity={1} onPress={() => {}}>
+            <View style={styles.modalHandle} />
+            <Text style={styles.modalTitle}>Log a Workout</Text>
+
+            <Text style={styles.fieldLabel}>Activity</Text>
+            <View style={styles.activityGrid}>
+              {ACTIVITIES.map((act) => {
+                const active = selectedActivity?.name === act.name;
+                return (
+                  <TouchableOpacity
+                    key={act.name}
+                    style={[styles.activityChip, active && styles.activityChipActive]}
+                    onPress={() => handlePickActivity(act)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.activityEmoji}>{act.emoji}</Text>
+                    <Text style={[styles.activityLabel, active && styles.activityLabelActive]}>
+                      {act.name}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {selectedActivity?.name === 'Other' && (
+              <>
+                <Text style={[styles.fieldLabel, { marginTop: 12 }]}>Activity name</Text>
+                <TextInput
+                  style={styles.textInput}
+                  value={customName}
+                  onChangeText={setCustomName}
+                  placeholder="e.g. Rock climbing"
+                  placeholderTextColor={colors.textMuted}
+                  autoFocus
+                />
+              </>
+            )}
+
+            <View style={styles.macroRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.fieldLabel, { marginTop: 12 }]}>Duration (min)</Text>
+                <TextInput
+                  style={styles.textInput}
+                  value={workoutDuration}
+                  onChangeText={handleDurationChange}
+                  keyboardType="numeric"
+                  selectTextOnFocus
+                />
+              </View>
+              <View style={{ width: spacing.sm }} />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.fieldLabel, { marginTop: 12 }]}>Kcal burned</Text>
+                <TextInput
+                  style={[styles.textInput, !kcalEdited && selectedActivity && styles.textInputAuto]}
+                  value={workoutKcal}
+                  onChangeText={(v) => { setWorkoutKcal(v); setKcalEdited(true); }}
+                  keyboardType="numeric"
+                  selectTextOnFocus
+                  placeholder={selectedActivity ? String(autoKcal) : '—'}
+                  placeholderTextColor={colors.textMuted}
+                />
+              </View>
+            </View>
+
+            {selectedActivity && !kcalEdited && (
+              <Text style={styles.kcalHint}>Auto-estimated from MET × weight. Tap to override.</Text>
+            )}
+
+            <TouchableOpacity
+              style={[styles.logBtn, !canLog && styles.logBtnDisabled]}
+              onPress={handleLogWorkout}
+              disabled={!canLog}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="checkmark-circle" size={20} color="#fff" />
+              <Text style={styles.logBtnText}>Log workout</Text>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -192,64 +380,43 @@ export default function ExerciseScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.bg },
   scroll: { paddingHorizontal: 16, paddingTop: 56 },
-  header: { marginBottom: 20 },
-  title: {
-    color: COLORS.textPrimary,
-    fontSize: 26,
-    fontWeight: '700',
+
+  header: { marginBottom: 16 },
+  title: { color: COLORS.textPrimary, fontSize: 26, fontWeight: '700' },
+  subtitle: { color: COLORS.textSecondary, fontSize: 14, marginTop: 2 },
+
+  weekStatsRow: {
+    flexDirection: 'row',
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.lg,
+    marginBottom: 12,
   },
-  subtitle: {
-    color: COLORS.textSecondary,
-    fontSize: 14,
-    marginTop: 2,
-  },
+  weekStat: { flex: 1, alignItems: 'center' },
+  weekStatVal: { fontSize: 20, fontWeight: '800', color: colors.primary },
+  weekStatLabel: { fontSize: 11, color: colors.textSecondary, marginTop: 2 },
+  weekStatDivider: { width: 1, backgroundColor: colors.border, marginVertical: 4 },
+
   todayCard: {
     backgroundColor: COLORS.card,
     borderRadius: 16,
     padding: 24,
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 12,
     borderWidth: 1,
     borderColor: COLORS.border,
   },
-  restCard: {
-    backgroundColor: colors.skySoft,
-    borderColor: colors.sky,
-  },
-  loggedCard: {
-    borderColor: colors.mint,
-    backgroundColor: colors.mintSoft,
-  },
-  skippedCard: {
-    borderColor: colors.border,
-    opacity: 0.7,
-  },
-  exerciseEmoji: {
-    fontSize: 48,
-    marginBottom: 10,
-  },
-  exerciseName: {
-    color: COLORS.textPrimary,
-    fontSize: 22,
-    fontWeight: '700',
-    marginBottom: 6,
-  },
-  exerciseDuration: {
-    color: COLORS.textSecondary,
-    fontSize: 14,
-    marginBottom: 12,
-  },
-  doneRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 8,
-  },
-  doneText: {
-    color: COLORS.green,
-    fontSize: 15,
-    fontWeight: '600',
-  },
+  restCard: { backgroundColor: colors.skySoft, borderColor: colors.sky },
+  loggedCard: { borderColor: colors.mint, backgroundColor: colors.mintSoft },
+  skippedCard: { borderColor: colors.border, opacity: 0.7 },
+  exerciseEmoji: { fontSize: 48, marginBottom: 10 },
+  exerciseName: { color: COLORS.textPrimary, fontSize: 22, fontWeight: '700', marginBottom: 6 },
+  exerciseDuration: { color: COLORS.textSecondary, fontSize: 14, marginBottom: 12 },
+  doneRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 },
+  doneText: { color: COLORS.green, fontSize: 15, fontWeight: '600' },
+
   card: {
     backgroundColor: COLORS.card,
     borderRadius: 16,
@@ -264,14 +431,9 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-    marginBottom: 14,
+    marginBottom: 12,
   },
-  durationRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginBottom: 14,
-  },
+  durationRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14 },
   durationInput: {
     flex: 1,
     backgroundColor: COLORS.bg,
@@ -284,10 +446,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
     textAlign: 'center',
   },
-  minLabel: {
-    color: COLORS.textSecondary,
-    fontSize: 16,
-  },
+  minLabel: { color: COLORS.textSecondary, fontSize: 16 },
   btnDone: {
     backgroundColor: colors.primary,
     borderRadius: 999,
@@ -298,19 +457,9 @@ const styles = StyleSheet.create({
     gap: 8,
     marginBottom: 10,
   },
-  btnDoneText: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  btnSkip: {
-    padding: 12,
-    alignItems: 'center',
-  },
-  btnSkipText: {
-    color: COLORS.red,
-    fontSize: 14,
-  },
+  btnDoneText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  btnSkip: { padding: 12, alignItems: 'center' },
+  btnSkipText: { color: COLORS.red, fontSize: 14 },
   restMessage: {
     backgroundColor: COLORS.card,
     borderRadius: 16,
@@ -320,12 +469,39 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
   },
-  restMessageText: {
-    color: COLORS.textSecondary,
-    fontSize: 16,
-    textAlign: 'center',
-    marginBottom: 16,
+  restMessageText: { color: COLORS.textSecondary, fontSize: 16, textAlign: 'center', marginBottom: 16 },
+
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
   },
+  addBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.primary,
+    borderRadius: radius.pill,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  addBtnText: { color: '#fff', fontSize: 12, fontWeight: '700' },
+  emptyWorkout: { alignItems: 'center', paddingVertical: 20, gap: 6 },
+  emptyText: { fontSize: 14, fontWeight: '600', color: colors.textSecondary },
+  emptySub: { fontSize: 12, color: colors.textMuted, textAlign: 'center' },
+  workoutRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  workoutEmoji: { fontSize: 24 },
+  workoutName: { fontSize: 14, fontWeight: '700', color: colors.textPrimary },
+  workoutMeta: { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
+
   weekRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -341,16 +517,8 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderBottomWidth: 0,
   },
-  weekLeft: {
-    width: 40,
-    alignItems: 'flex-start',
-    position: 'relative',
-  },
-  weekDay: {
-    color: COLORS.textSecondary,
-    fontSize: 13,
-    fontWeight: '600',
-  },
+  weekLeft: { width: 40, alignItems: 'flex-start', position: 'relative' },
+  weekDay: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600' },
   todayDot: {
     position: 'absolute',
     top: -2,
@@ -362,13 +530,88 @@ const styles = StyleSheet.create({
   },
   weekEmoji: { fontSize: 20 },
   weekRight: { flex: 1 },
-  weekActivity: {
-    color: COLORS.textSecondary,
-    fontSize: 14,
+  weekActivity: { color: COLORS.textSecondary, fontSize: 14 },
+  weekDuration: { color: COLORS.textSecondary, fontSize: 12, marginTop: 1 },
+
+  // Modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(46,42,38,0.4)',
+    justifyContent: 'flex-end',
   },
-  weekDuration: {
-    color: COLORS.textSecondary,
-    fontSize: 12,
-    marginTop: 1,
+  modalSheet: {
+    backgroundColor: colors.bg,
+    borderTopLeftRadius: radius.card,
+    borderTopRightRadius: radius.card,
+    padding: spacing.lg,
+    paddingBottom: 36,
+    maxHeight: '90%',
   },
+  modalHandle: {
+    width: 40,
+    height: 4,
+    backgroundColor: colors.border,
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: spacing.md,
+  },
+  modalTitle: { fontSize: 20, fontWeight: '800', color: colors.textPrimary, marginBottom: spacing.md },
+  fieldLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginBottom: 8,
+  },
+  activityGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  activityChip: {
+    width: '30%',
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderRadius: radius.md,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    gap: 4,
+  },
+  activityChipActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primarySoft,
+  },
+  activityEmoji: { fontSize: 22 },
+  activityLabel: { fontSize: 11, fontWeight: '600', color: colors.textSecondary, textAlign: 'center' },
+  activityLabelActive: { color: colors.primaryDark },
+  textInput: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 12,
+    fontSize: 15,
+    color: colors.textPrimary,
+  },
+  textInputAuto: {
+    borderColor: colors.mint,
+    backgroundColor: colors.mintSoft,
+  },
+  macroRow: { flexDirection: 'row' },
+  kcalHint: { fontSize: 11, color: colors.textMuted, marginTop: 6, marginBottom: 4 },
+  logBtn: {
+    backgroundColor: colors.primary,
+    borderRadius: radius.pill,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: spacing.lg,
+    marginTop: spacing.md,
+  },
+  logBtnDisabled: { opacity: 0.4 },
+  logBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
 });
