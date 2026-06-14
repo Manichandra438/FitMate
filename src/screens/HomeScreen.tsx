@@ -66,6 +66,9 @@ export default function HomeScreen() {
   const displayAnimated = useCountUp(displayKcal);
   const weeklyBank = getWeeklyBank();
   const { steps, available: stepsAvailable, kcalBurned } = useStepCounter();
+  const todayBurned = (log.workouts ?? []).reduce((s, w) => s + w.kcalBurned, 0);
+  const carbGoal = Math.round((profile.calorieGoal * 0.45) / 4);
+  const fatGoal = Math.round((profile.calorieGoal * 0.30) / 9);
 
   const yesterday = dayjs().subtract(1, 'day').format('YYYY-MM-DD');
   const missedYesterday = useMemo(() => logKcal(logs[yesterday]) === 0, [logs, yesterday]);
@@ -133,10 +136,14 @@ export default function HomeScreen() {
               <Ionicons name="calendar" size={16} color={colors.primary} />
               <Text style={styles.reportBtnText}>Week</Text>
             </TouchableOpacity>
-            <View style={styles.streakBadge}>
+            <TouchableOpacity
+              style={styles.streakBadge}
+              onPress={() => navigation.navigate('Tabs', { screen: 'Analytics', params: { initialTab: 'streaks' } })}
+              activeOpacity={0.75}
+            >
               <Text style={styles.streakFire}>🔥</Text>
               <Text style={styles.streakText}>{streak}</Text>
-            </View>
+            </TouchableOpacity>
           </View>
         </FadeSlideIn>
 
@@ -242,6 +249,34 @@ export default function HomeScreen() {
           </FadeSlideIn>
         )}
 
+        {/* Nutrition Progress bars */}
+        <FadeSlideIn delay={95}>
+          <GradientCard style={styles.nutriCard}>
+            <Text style={styles.cardTitle}>📊 Nutrition Progress</Text>
+            {[
+              { label: 'Calories', value: kcal, goal: profile.calorieGoal, unit: 'kcal', color: colors.primary },
+              { label: 'Protein', value: protein, goal: profile.proteinGoal, unit: 'g', color: colors.orange },
+              { label: 'Carbs', value: carbs, goal: carbGoal, unit: 'g', color: colors.sky },
+              { label: 'Fat', value: fat, goal: fatGoal, unit: 'g', color: colors.sun },
+            ].map(({ label, value, goal, unit, color }) => {
+              const pct = Math.min(goal > 0 ? value / goal : 0, 1);
+              return (
+                <View key={label} style={styles.nutriRow}>
+                  <View style={styles.nutriLabelRow}>
+                    <Text style={styles.nutriLabel}>{label}</Text>
+                    <Text style={styles.nutriValue}>
+                      {value}<Text style={styles.nutriGoal}>/{goal}{unit}</Text>
+                    </Text>
+                  </View>
+                  <View style={styles.nutriTrack}>
+                    <View style={[styles.nutriFill, { width: `${pct * 100}%`, backgroundColor: color }]} />
+                  </View>
+                </View>
+              );
+            })}
+          </GradientCard>
+        </FadeSlideIn>
+
         {/* Weekly calorie bank */}
         <FadeSlideIn delay={100}>
           <GradientCard style={styles.bankCard}>
@@ -271,6 +306,26 @@ export default function HomeScreen() {
                 <Text style={styles.stepsCount}>{steps.toLocaleString()}</Text>
               </View>
             </GradientCard>
+          </FadeSlideIn>
+        )}
+
+        {/* Today's Burn */}
+        {todayBurned > 0 && (
+          <FadeSlideIn delay={115}>
+            <TouchableOpacity
+              style={styles.burnCard}
+              onPress={() => navigation.navigate('Exercise')}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.burnEmoji}>🔥</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.burnTitle}>{todayBurned} kcal burned today</Text>
+                <Text style={styles.burnSub}>
+                  Net: {Math.max(kcal - todayBurned, 0)} kcal · {(log.workouts ?? []).length} workout{(log.workouts ?? []).length !== 1 ? 's' : ''}
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={colors.orange} />
+            </TouchableOpacity>
           </FadeSlideIn>
         )}
 
@@ -562,4 +617,37 @@ const styles = StyleSheet.create({
   macroVal: { fontSize: 18, fontWeight: '800' },
   macroLabel: { fontSize: 11, color: colors.textSecondary, marginTop: 2 },
   macroDivider: { width: 1, height: 32, backgroundColor: colors.border },
+
+  nutriCard: { marginBottom: spacing.sm },
+  nutriRow: { marginTop: spacing.sm },
+  nutriLabelRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
+  nutriLabel: { fontSize: 12, fontWeight: '600', color: colors.textSecondary },
+  nutriValue: { fontSize: 12, fontWeight: '700', color: colors.textPrimary },
+  nutriGoal: { fontSize: 11, fontWeight: '400', color: colors.textMuted },
+  nutriTrack: {
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.surfaceHigh,
+    overflow: 'hidden',
+  },
+  nutriFill: {
+    height: '100%',
+    borderRadius: 4,
+    minWidth: 4,
+  },
+
+  burnCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    backgroundColor: colors.sunSoft,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.sun,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  burnEmoji: { fontSize: 28 },
+  burnTitle: { fontSize: 14, fontWeight: '700', color: colors.textPrimary },
+  burnSub: { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
 });

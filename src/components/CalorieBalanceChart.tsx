@@ -8,7 +8,6 @@ import { logKcal } from '../services/statsHelpers';
 
 const CHART_W = 320;
 const CHART_H = 140;
-const BAR_W = 28;
 const PAD_L = 36;
 const PAD_R = 12;
 const PAD_T = 12;
@@ -16,21 +15,42 @@ const PAD_B = 28;
 const PLOT_W = CHART_W - PAD_L - PAD_R;
 const PLOT_H = CHART_H - PAD_T - PAD_B;
 
-export default function CalorieBalanceChart() {
+interface Props {
+  days?: number;
+}
+
+export default function CalorieBalanceChart({ days: rangeDays = 7 }: Props) {
   const { logs, profile } = useFitStore();
   const goal = profile.calorieGoal;
+  const today = dayjs().format('YYYY-MM-DD');
 
-  const days = Array.from({ length: 7 }, (_, i) => {
-    const date = dayjs().subtract(6 - i, 'day').format('YYYY-MM-DD');
-    const kcal = logKcal(logs[date]);
-    return { date, kcal, label: dayjs(date).format('dd') };
-  });
+  const useWeekly = rangeDays > 7;
+  const numWeeks = Math.ceil(rangeDays / 7);
 
+  const days = useWeekly
+    ? Array.from({ length: numWeeks }, (_, i) => {
+        const offsetEnd = (numWeeks - 1 - i) * 7;
+        const weekDates = Array.from({ length: 7 }, (_, j) =>
+          dayjs().subtract(offsetEnd + (6 - j), 'day').format('YYYY-MM-DD')
+        ).filter((d) => d <= today);
+        const eaten = weekDates.map((d) => logKcal(logs[d])).filter((k) => k > 0);
+        const avgKcal = eaten.length > 0
+          ? Math.round(eaten.reduce((s, k) => s + k, 0) / eaten.length)
+          : 0;
+        return { date: dayjs().subtract(offsetEnd, 'day').format('YYYY-MM-DD'), kcal: avgKcal, label: `W${i + 1}` };
+      })
+    : Array.from({ length: 7 }, (_, i) => {
+        const date = dayjs().subtract(6 - i, 'day').format('YYYY-MM-DD');
+        const kcal = logKcal(logs[date]);
+        return { date, kcal, label: dayjs(date).format('dd') };
+      });
+
+  const numBars = days.length;
   const maxKcal = Math.max(goal * 1.2, ...days.map((d) => d.kcal));
   const toY = (k: number) => PLOT_H - (k / maxKcal) * PLOT_H;
   const goalY = toY(goal);
-
-  const slotW = PLOT_W / 7;
+  const slotW = PLOT_W / numBars;
+  const BAR_W = Math.max(8, Math.floor(slotW * 0.65));
 
   return (
     <View style={styles.wrap}>

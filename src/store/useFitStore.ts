@@ -104,7 +104,8 @@ interface FitState {
   removeWater: () => void;
   logExercise: (duration: number) => void;
   skipExercise: () => void;
-  logWeight: (weight: number) => void;
+  logWeight: (weight: number, date?: string) => void;
+  deleteWeightEntry: (date: string) => void;
   updateMealPlan: (meals: Meal[]) => void;
   updateSingleMeal: (mealId: string, updated: Meal) => void;
   updateExercisePlan: (plan: ExercisePlan) => void;
@@ -369,24 +370,41 @@ export const useFitStore = create<FitState>()(
         }));
       },
 
-      logWeight: (weight) => {
-        const date = todayStr();
-        get().ensureTodayLog();
+      logWeight: (weight, date) => {
+        const targetDate = date ?? todayStr();
+        if (!date) get().ensureTodayLog();
         set((s) => {
-          const filtered = s.weightHistory.filter((w) => w.date !== date);
-          const newHistory = [...filtered, { date, weight }].sort((a, b) =>
+          const filtered = s.weightHistory.filter((w) => w.date !== targetDate);
+          const newHistory = [...filtered, { date: targetDate, weight }].sort((a, b) =>
             a.date.localeCompare(b.date)
           );
+          const latestWeight = newHistory[newHistory.length - 1]?.weight ?? s.profile.currentWeight;
           return {
             logs: {
               ...s.logs,
-              [date]: { ...s.logs[date], weight },
+              [targetDate]: { ...(s.logs[targetDate] ?? {}), weight },
             },
             weightHistory: newHistory,
-            profile: { ...s.profile, currentWeight: weight },
+            profile: { ...s.profile, currentWeight: latestWeight },
           };
         });
       },
+
+      deleteWeightEntry: (date) =>
+        set((s) => {
+          const newHistory = s.weightHistory.filter((w) => w.date !== date);
+          const latestWeight = newHistory.length > 0
+            ? newHistory[newHistory.length - 1].weight
+            : s.profile.startWeight;
+          const updatedLog = s.logs[date]
+            ? { ...s.logs[date], weight: undefined }
+            : s.logs[date];
+          return {
+            weightHistory: newHistory,
+            profile: { ...s.profile, currentWeight: latestWeight },
+            logs: updatedLog ? { ...s.logs, [date]: updatedLog } : s.logs,
+          };
+        }),
 
       updateMealPlan: (meals) => set({ mealPlan: meals }),
       updateSingleMeal: (mealId, updated) =>

@@ -6,7 +6,7 @@ import {
   ScrollView,
   TouchableOpacity,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useRoute } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
 import { COLORS } from '../types';
@@ -16,13 +16,21 @@ import CalorieBalanceChart from '../components/CalorieBalanceChart';
 import MacroDonut from '../components/MacroDonut';
 
 type TabType = 'daily' | 'weekly' | 'streaks';
+type RangeType = '7d' | '30d' | '90d';
 
 export default function AnalyticsScreen() {
   const [tab, setTab] = useState<TabType>('daily');
+  const [range, setRange] = useState<RangeType>('7d');
+  const route = useRoute<any>();
   const { logs, profile, weightHistory, mealPlan, ensureTodayLog, getStreak } =
     useFitStore();
 
-  useFocusEffect(useCallback(() => { ensureTodayLog(); }, []));
+  useFocusEffect(useCallback(() => {
+    ensureTodayLog();
+    if (route.params?.initialTab) {
+      setTab(route.params.initialTab as TabType);
+    }
+  }, [route.params?.initialTab]));
 
   const streak = getStreak();
 
@@ -30,15 +38,13 @@ export default function AnalyticsScreen() {
   const yesterday = dayjs().subtract(1, 'day').format('YYYY-MM-DD');
   const yesterdayLog = logs[yesterday];
 
-  // Weekly data (last 7 days)
-  const weekDates = Array.from({ length: 7 }, (_, i) =>
-    dayjs().subtract(6 - i, 'day').format('YYYY-MM-DD')
+  // Dynamic range
+  const rangeDays = range === '7d' ? 7 : range === '30d' ? 30 : 90;
+  const weekDates = Array.from({ length: rangeDays }, (_, i) =>
+    dayjs().subtract(rangeDays - 1 - i, 'day').format('YYYY-MM-DD')
   );
   const weekLogs = weekDates.map((d) => logs[d]).filter(Boolean);
 
-  // Averages divide only by days food was actually logged — empty days that
-  // exist just because the app was opened (ensureTodayLog) must not drag the
-  // average down. logKcal/logProtein include meals + quick-adds.
   const ateLogs = weekLogs.filter((l) => logKcal(l) > 0);
 
   const avgKcal =
@@ -57,17 +63,16 @@ export default function AnalyticsScreen() {
 
   const exerciseDays = weekLogs.filter((l) => l.exercise.done).length;
 
+  // Weight change across selected range
+  const rangeWeights = weightHistory.filter(w => w.date >= weekDates[0]).sort((a,b) => a.date.localeCompare(b.date));
   const weightChange =
-    weightHistory.length >= 2
-      ? (
-          weightHistory[weightHistory.length - 1].weight -
-          weightHistory[weightHistory.length - 2].weight
-        ).toFixed(1)
+    rangeWeights.length >= 2
+      ? (rangeWeights[rangeWeights.length - 1].weight - rangeWeights[0].weight).toFixed(1)
       : null;
 
-  // Calendar heatmap (last 28 days)
-  const heatmapDates = Array.from({ length: 28 }, (_, i) =>
-    dayjs().subtract(27 - i, 'day')
+  // Heatmap uses selected range (max 90)
+  const heatmapDates = Array.from({ length: rangeDays }, (_, i) =>
+    dayjs().subtract(rangeDays - 1 - i, 'day')
   );
 
   const getActivityScore = (date: string): number => {
@@ -200,7 +205,20 @@ export default function AnalyticsScreen() {
         {/* WEEKLY TAB */}
         {tab === 'weekly' && (
           <>
-            <Text style={styles.sectionLabel}>Last 7 Days</Text>
+            <View style={styles.rangeRow}>
+              {(['7d', '30d', '90d'] as RangeType[]).map((r) => (
+                <TouchableOpacity
+                  key={r}
+                  style={[styles.rangeChip, range === r && styles.rangeChipActive]}
+                  onPress={() => setRange(r)}
+                >
+                  <Text style={[styles.rangeChipText, range === r && styles.rangeChipTextActive]}>
+                    {r === '7d' ? '7 Days' : r === '30d' ? '30 Days' : '90 Days'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <Text style={styles.sectionLabel}>Last {rangeDays} Days</Text>
             <View style={styles.recapGrid}>
               <View style={styles.recapItem}>
                 <Text style={[styles.recapValue, { color: COLORS.green }]}>
@@ -215,12 +233,12 @@ export default function AnalyticsScreen() {
                 <Text style={styles.recapLabel}>avg protein/day</Text>
               </View>
               <View style={styles.recapItem}>
-                <Text style={styles.recapValue}>{mealsHitDays}/7</Text>
+                <Text style={styles.recapValue}>{mealsHitDays}/{rangeDays}</Text>
                 <Text style={styles.recapLabel}>meal-on-plan days</Text>
               </View>
               <View style={styles.recapItem}>
                 <Text style={[styles.recapValue, { color: COLORS.blue }]}>
-                  {exerciseDays}/7
+                  {exerciseDays}/{rangeDays}
                 </Text>
                 <Text style={styles.recapLabel}>exercise days</Text>
               </View>
@@ -241,15 +259,15 @@ export default function AnalyticsScreen() {
                   ]}
                 >
                   {parseFloat(weightChange) < 0 ? '↓' : '↑'}{' '}
-                  {Math.abs(parseFloat(weightChange))} kg this week
+                  {Math.abs(parseFloat(weightChange))} kg in {rangeDays} days
                 </Text>
               </View>
             )}
 
             {/* Calorie balance chart */}
             <View style={styles.card}>
-              <Text style={styles.cardTitle}>Calorie Balance (7 Days)</Text>
-              <CalorieBalanceChart />
+              <Text style={styles.cardTitle}>Calorie Balance ({rangeDays} Days)</Text>
+              <CalorieBalanceChart days={rangeDays} />
             </View>
 
             {/* Macro breakdown — estimated from protein + kcal */}
@@ -276,7 +294,7 @@ export default function AnalyticsScreen() {
             {/* Daily breakdown */}
             <View style={styles.card}>
               <Text style={styles.cardTitle}>Daily Breakdown</Text>
-              {weekDates.map((date) => {
+              {(rangeDays <= 30 ? weekDates : weekDates.slice(-30)).map((date) => {
                 const kcal = logKcal(logs[date]);
                 const pct = Math.min(kcal / profile.calorieGoal, 1);
                 const isToday = date === dayjs().format('YYYY-MM-DD');
@@ -333,7 +351,7 @@ export default function AnalyticsScreen() {
 
             {/* Heatmap */}
             <View style={styles.card}>
-              <Text style={styles.cardTitle}>Activity Heatmap (28 days)</Text>
+              <Text style={styles.cardTitle}>Activity Heatmap ({rangeDays} days)</Text>
               <View style={styles.heatmap}>
                 {heatmapDates.map((d) => {
                   const dateStr = d.format('YYYY-MM-DD');
@@ -589,6 +607,33 @@ const styles = StyleSheet.create({
     width: 14,
     height: 14,
     borderRadius: 3,
+  },
+  rangeRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 14,
+  },
+  rangeChip: {
+    flex: 1,
+    paddingVertical: 7,
+    borderRadius: 999,
+    alignItems: 'center',
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  rangeChipActive: {
+    backgroundColor: '#FFE8E0',
+    borderColor: '#FF7A59',
+  },
+  rangeChipText: {
+    color: COLORS.textSecondary,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  rangeChipTextActive: {
+    color: '#F25C3F',
+    fontWeight: '700',
   },
   statsList: { gap: 2 },
   statsRow: {

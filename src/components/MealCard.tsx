@@ -68,6 +68,7 @@ export default function MealCard({ meal, log, onPress, compact }: Props) {
         <Text style={[styles.kcal, isLogged && { color: colors.mint }]}>
           {isLogged ? log?.totalKcal : meal.totalKcal} kcal
         </Text>
+        {isPending && <Text style={styles.plannedLabel}>planned</Text>}
         <Text style={styles.protein}>
           {isLogged
             ? Math.round(log?.totalProtein ?? 0)
@@ -133,5 +134,6 @@ const styles = StyleSheet.create({
   },
   statusChipText: { fontSize: 10, fontWeight: '700' },
   kcal: { color: colors.textPrimary, fontSize: 13, fontWeight: '700' },
+  plannedLabel: { color: colors.textMuted, fontSize: 10, fontWeight: '500', marginTop: -1 },
   protein: { color: colors.textSecondary, fontSize: 11 },
 });

@@ -13,7 +13,7 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
-import { COLORS, ExercisePlan } from '../types';
+import { COLORS, ExercisePlan, WorkoutEntry } from '../types';
 import { colors, radius, spacing, cardShadow } from '../theme';
 import { useFitStore } from '../store/useFitStore';
 import { DAY_LABELS } from '../data/exercisePlan';
@@ -37,6 +37,7 @@ export default function ExerciseScreen() {
 
   const [duration, setDuration] = useState('');
   const [addVisible, setAddVisible] = useState(false);
+  const [editingWorkoutId, setEditingWorkoutId] = useState<string | null>(null);
   const [selectedActivity, setSelectedActivity] = useState<typeof ACTIVITIES[0] | null>(null);
   const [customName, setCustomName] = useState('');
   const [workoutDuration, setWorkoutDuration] = useState('30');
@@ -91,11 +92,23 @@ export default function ExerciseScreen() {
   };
 
   const openAdd = () => {
+    setEditingWorkoutId(null);
     setSelectedActivity(null);
     setCustomName('');
     setWorkoutDuration('30');
     setWorkoutKcal('');
     setKcalEdited(false);
+    setAddVisible(true);
+  };
+
+  const openEdit = (w: WorkoutEntry) => {
+    setEditingWorkoutId(w.id);
+    const act = ACTIVITIES.find((a) => a.name === w.activity) ?? ACTIVITIES.find((a) => a.name === 'Other')!;
+    setSelectedActivity(act);
+    setCustomName(act.name === 'Other' ? w.activity : '');
+    setWorkoutDuration(String(w.durationMin));
+    setWorkoutKcal(String(w.kcalBurned));
+    setKcalEdited(true);
     setAddVisible(true);
   };
 
@@ -113,7 +126,11 @@ export default function ExerciseScreen() {
         ? customName.trim() || 'Other'
         : selectedActivity.name;
     const kcal = parseInt(workoutKcal, 10) || 0;
+    if (editingWorkoutId) {
+      removeWorkout(editingWorkoutId);
+    }
     addWorkout({ activity: name, emoji: selectedActivity.emoji, durationMin: dur, kcalBurned: kcal });
+    setEditingWorkoutId(null);
     setAddVisible(false);
     success();
     confetti.current?.burst();
@@ -249,6 +266,13 @@ export default function ExerciseScreen() {
                   </Text>
                 </View>
                 <TouchableOpacity
+                  onPress={() => openEdit(w)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  style={{ marginRight: 8 }}
+                >
+                  <Ionicons name="pencil-outline" size={18} color={colors.textSecondary} />
+                </TouchableOpacity>
+                <TouchableOpacity
                   onPress={() => removeWorkout(w.id)}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
@@ -258,6 +282,52 @@ export default function ExerciseScreen() {
             ))
           )}
         </View>
+
+        {/* 7-day burn history */}
+        {weekStats.totalSessions > 0 && (() => {
+          const histDays = Array.from({ length: 7 }, (_, i) => {
+            const date = dayjs().subtract(6 - i, 'day').format('YYYY-MM-DD');
+            const wks = logs[date]?.workouts ?? [];
+            const burned = wks.reduce((s, w) => s + w.kcalBurned, 0);
+            return { date, burned, label: dayjs(date).format('dd') };
+          });
+          const maxBurned = Math.max(...histDays.map((d) => d.burned), 1);
+          return (
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>7-Day Burn History</Text>
+              <View style={styles.histChart}>
+                {histDays.map((d) => {
+                  const pct = d.burned / maxBurned;
+                  const isToday = d.date === dayjs().format('YYYY-MM-DD');
+                  return (
+                    <View key={d.date} style={styles.histBar}>
+                      {d.burned > 0 && (
+                        <Text style={styles.histKcal}>
+                          {d.burned >= 1000 ? `${(d.burned / 1000).toFixed(1)}k` : d.burned}
+                        </Text>
+                      )}
+                      <View style={styles.histBarTrack}>
+                        <View
+                          style={[
+                            styles.histBarFill,
+                            {
+                              height: `${Math.max(pct * 100, d.burned > 0 ? 4 : 0)}%`,
+                              backgroundColor: isToday ? colors.primary : colors.primarySoft,
+                              borderColor: isToday ? colors.primaryDark : colors.primary,
+                            },
+                          ]}
+                        />
+                      </View>
+                      <Text style={[styles.histLabel, isToday && { color: colors.primary, fontWeight: '700' }]}>
+                        {d.label}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+          );
+        })()}
 
         {/* Weekly rotation */}
         <View style={styles.card}>
@@ -295,7 +365,7 @@ export default function ExerciseScreen() {
         <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setAddVisible(false)}>
           <TouchableOpacity style={styles.modalSheet} activeOpacity={1} onPress={() => {}}>
             <View style={styles.modalHandle} />
-            <Text style={styles.modalTitle}>Log a Workout</Text>
+            <Text style={styles.modalTitle}>{editingWorkoutId ? 'Edit Workout' : 'Log a Workout'}</Text>
 
             <Text style={styles.fieldLabel}>Activity</Text>
             <View style={styles.activityGrid}>
@@ -614,4 +684,38 @@ const styles = StyleSheet.create({
   },
   logBtnDisabled: { opacity: 0.4 },
   logBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  histChart: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    height: 100,
+    gap: 6,
+  },
+  histBar: {
+    flex: 1,
+    alignItems: 'center',
+    height: '100%',
+    justifyContent: 'flex-end',
+  },
+  histKcal: {
+    fontSize: 8,
+    color: colors.textMuted,
+    marginBottom: 2,
+  },
+  histBarTrack: {
+    width: '100%',
+    flex: 1,
+    justifyContent: 'flex-end',
+    borderRadius: 6,
+    overflow: 'hidden',
+  },
+  histBarFill: {
+    width: '100%',
+    borderRadius: 6,
+    borderWidth: 1,
+  },
+  histLabel: {
+    fontSize: 10,
+    color: colors.textSecondary,
+    marginTop: 4,
+  },
 });

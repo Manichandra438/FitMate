@@ -61,9 +61,10 @@ function bmiCategory(bmi: number): { label: string; color: string } {
 
 export default function WeightScreen() {
   const navigation = useNavigation<any>();
-  const { profile, weightHistory, logWeight, getTodayLog, ensureTodayLog } =
+  const { profile, weightHistory, logWeight, deleteWeightEntry, getTodayLog, ensureTodayLog } =
     useFitStore();
   const [inputWeight, setInputWeight] = useState('');
+  const [editingDate, setEditingDate] = useState<string | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -90,8 +91,25 @@ export default function WeightScreen() {
       Alert.alert('Invalid weight', 'Enter a weight between 30 and 300 kg.');
       return;
     }
-    logWeight(w);
+    logWeight(w, editingDate ?? undefined);
     setInputWeight('');
+    setEditingDate(null);
+  };
+
+  const handleEditEntry = (entry: { date: string; weight: number }) => {
+    setEditingDate(entry.date);
+    setInputWeight(String(entry.weight));
+  };
+
+  const handleDeleteEntry = (date: string) => {
+    Alert.alert(
+      'Delete entry',
+      `Remove weight entry for ${dayjs(date).format('ddd, MMM D')}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: () => deleteWeightEntry(date) },
+      ]
+    );
   };
 
   return (
@@ -191,10 +209,19 @@ export default function WeightScreen() {
 
         {/* Log today's weight */}
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>
-            {todayWeight ? 'Update Today' : "Today's Weigh-In"}
-          </Text>
-          {todayWeight && (
+          <View style={styles.cardTitleRow}>
+            <Text style={styles.cardTitle}>
+              {editingDate
+                ? `Edit ${dayjs(editingDate).format('ddd, MMM D')}`
+                : todayWeight ? 'Update Today' : "Today's Weigh-In"}
+            </Text>
+            {editingDate && (
+              <TouchableOpacity onPress={() => { setEditingDate(null); setInputWeight(''); }}>
+                <Text style={styles.cancelEdit}>Cancel</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+          {!editingDate && todayWeight && (
             <Text style={styles.todayWeight}>
               Logged: <Text style={{ color: COLORS.blue }}>{todayWeight} kg</Text>
             </Text>
@@ -205,7 +232,9 @@ export default function WeightScreen() {
               value={inputWeight}
               onChangeText={setInputWeight}
               placeholder={
-                todayWeight
+                editingDate
+                  ? 'Enter corrected weight'
+                  : todayWeight
                   ? `${todayWeight}`
                   : `${profile.currentWeight}`
               }
@@ -224,7 +253,7 @@ export default function WeightScreen() {
               disabled={!inputWeight}
             >
               <Text style={styles.logBtnText}>
-                {todayWeight ? 'Update' : 'Log'}
+                {editingDate ? 'Save' : todayWeight ? 'Update' : 'Log'}
               </Text>
             </TouchableOpacity>
           </View>
@@ -234,18 +263,26 @@ export default function WeightScreen() {
         {weightHistory.length > 0 && (
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Recent Entries</Text>
+            <Text style={styles.historyHint}>Tap to edit · Long-press to delete</Text>
             {[...weightHistory]
               .reverse()
               .slice(0, 10)
               .map((entry) => (
-                <View key={entry.date} style={styles.historyRow}>
+                <TouchableOpacity
+                  key={entry.date}
+                  style={[styles.historyRow, editingDate === entry.date && styles.historyRowEditing]}
+                  onPress={() => handleEditEntry(entry)}
+                  onLongPress={() => handleDeleteEntry(entry.date)}
+                  activeOpacity={0.7}
+                >
                   <Text style={styles.historyDate}>
                     {dayjs(entry.date).format('ddd, MMM D')}
                   </Text>
-                  <Text style={styles.historyWeight}>
-                    {entry.weight} kg
-                  </Text>
-                </View>
+                  <View style={styles.historyRight}>
+                    <Text style={styles.historyWeight}>{entry.weight} kg</Text>
+                    <Ionicons name="pencil-outline" size={14} color={COLORS.textSecondary} style={{ marginLeft: 6 }} />
+                  </View>
+                </TouchableOpacity>
               ))}
           </View>
         )}
@@ -370,6 +407,17 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     marginBottom: 14,
   },
+  cardTitleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  cancelEdit: {
+    color: '#FF7A59',
+    fontSize: 13,
+    fontWeight: '600',
+  },
   todayWeight: {
     color: COLORS.textSecondary,
     fontSize: 14,
@@ -410,16 +458,32 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
   },
+  historyHint: {
+    color: COLORS.textSecondary,
+    fontSize: 11,
+    marginBottom: 8,
+    marginTop: -8,
+  },
   historyRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingVertical: 8,
+    alignItems: 'center',
+    paddingVertical: 10,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
+  },
+  historyRowEditing: {
+    backgroundColor: '#FFE8E0',
+    borderRadius: 8,
+    paddingHorizontal: 8,
   },
   historyDate: {
     color: COLORS.textSecondary,
     fontSize: 14,
+  },
+  historyRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   historyWeight: {
     color: COLORS.textPrimary,
