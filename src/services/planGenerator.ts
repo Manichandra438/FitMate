@@ -1,6 +1,7 @@
 import dayjs from 'dayjs';
 import {
   ActivityLevel,
+  CuisineRegion,
   DietPref,
   FastingProtocol,
   FoodItem,
@@ -13,6 +14,13 @@ import {
   PlanTargets,
   TemplateFood,
 } from '../types';
+
+export function matchesCuisine(t: MealTemplate, region?: CuisineRegion): boolean {
+  if (!region || region === 'pan-indian') {
+    return !t.cuisineRegion || t.cuisineRegion.includes('pan-indian');
+  }
+  return !t.cuisineRegion || t.cuisineRegion.includes('pan-indian') || t.cuisineRegion.includes(region);
+}
 import { MEAL_TEMPLATES } from '../data/mealTemplates';
 
 export const ACTIVITY_MULTIPLIERS: Record<ActivityLevel, number> = {
@@ -156,11 +164,36 @@ function formatTime(minutes: number): string {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 
+function fmt12(minutes: number): string {
+  const total = ((minutes % 1440) + 1440) % 1440;
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  const h12 = h % 12 || 12;
+  const mStr = m > 0 ? `:${String(m).padStart(2, '0')}` : '';
+  return `${h12}${mStr} ${ampm}`;
+}
+
 const IF_OFFSETS: Partial<Record<FastingProtocol, { offsetH: number; eatH: number }>> = {
   '16:8': { offsetH: 1, eatH: 8 },
   '18:6': { offsetH: 2, eatH: 6 },
   '20:4': { offsetH: 4, eatH: 4 },
 };
+
+export function computeIfWindow(
+  protocol: FastingProtocol | undefined,
+  wakeTime: string,
+  sleepTime: string,
+): string {
+  if (!protocol || protocol === 'none') return 'All day';
+  const opts = IF_OFFSETS[protocol];
+  if (!opts) return 'All day';
+  const wakeMin = parseTime(wakeTime);
+  const sleepMin = parseTime(sleepTime);
+  const startMin = wakeMin + opts.offsetH * 60;
+  const endMin = Math.min(startMin + opts.eatH * 60, sleepMin - 60);
+  return `${fmt12(startMin)} – ${fmt12(endMin)}`;
+}
 
 function mealTimes(
   count: number,
@@ -241,11 +274,13 @@ export function generateMealPlan(
 
   const meals: Meal[] = slots.map((slot, i) => {
     const candidates = MEAL_TEMPLATES.filter(
-      (t) => t.slot === slot.slot && t.dietPref.includes(answers.dietPref)
+      (t) => t.slot === slot.slot && t.dietPref.includes(answers.dietPref) && matchesCuisine(t, answers.cuisineRegion)
     );
-    // Fall back to any template for this slot if none match the diet preference.
+    // Fall back progressively: drop cuisine filter, then drop diet filter.
     const pool = candidates.length
       ? candidates
+      : MEAL_TEMPLATES.filter((t) => t.slot === slot.slot && t.dietPref.includes(answers.dietPref)).length
+      ? MEAL_TEMPLATES.filter((t) => t.slot === slot.slot && t.dietPref.includes(answers.dietPref))
       : MEAL_TEMPLATES.filter((t) => t.slot === slot.slot);
     const template =
       pool.find((t) => !usedTemplates.has(t.name)) ?? pool[0];

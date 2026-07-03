@@ -22,6 +22,7 @@ import FadeSlideIn from '../../components/anim/FadeSlideIn';
 import IFInfoModal from '../../components/IFInfoModal';
 import {
   ActivityLevel,
+  CuisineRegion,
   DietPref,
   FastingProtocol,
   Gender,
@@ -29,7 +30,7 @@ import {
   MealsPerDay,
   OnboardingAnswers,
 } from '../../types';
-import { computeTargets, PACE_KG_PER_WEEK } from '../../services/planGenerator';
+import { computeIfWindow, computeTargets, PACE_KG_PER_WEEK } from '../../services/planGenerator';
 import { useFitStore } from '../../store/useFitStore';
 import { scheduleAllNotifications } from '../../services/notifications';
 import { scheduleWidgetRefresh } from '../../widgets/updateWidget';
@@ -74,6 +75,12 @@ const IF_OPTIONS: { value: FastingProtocol; label: string; window: string; desc:
   { value: '20:4', label: '20:4', window: '2 pm – 6 pm', desc: 'Fast 20h, eat in a 4-hour window' },
 ];
 
+const CUISINE_OPTIONS: { value: CuisineRegion; title: string; subtitle: string; emoji: string }[] = [
+  { value: 'pan-indian', title: 'No preference', subtitle: 'A mix of common Indian meals', emoji: '🍱' },
+  { value: 'north-indian', title: 'North Indian', subtitle: 'Dal, roti, rajma, paneer', emoji: '🫓' },
+  { value: 'south-indian', title: 'South Indian', subtitle: 'Idli, dosa, sambar, rasam', emoji: '🥣' },
+];
+
 const fmt12 = (t: string) => {
   const [hh, mm] = t.split(':').map(Number);
   const ampm = hh < 12 ? 'AM' : 'PM';
@@ -91,18 +98,19 @@ export default function OnboardingScreen() {
 
   // Height
   const [heightUnit, setHeightUnit] = useState<'cm' | 'ft'>('cm');
-  const [height, setHeight] = useState('');
-  const [heightFt, setHeightFt] = useState('');
-  const [heightIn, setHeightIn] = useState('');
+  const [height, setHeight] = useState('170');
+  const [heightFt, setHeightFt] = useState('5');
+  const [heightIn, setHeightIn] = useState('7');
 
-  const [currentWeight, setCurrentWeight] = useState('');
-  const [goalWeight, setGoalWeight] = useState('');
+  const [currentWeight, setCurrentWeight] = useState('70');
+  const [goalWeight, setGoalWeight] = useState('65');
   const [activityLevel, setActivityLevel] = useState<ActivityLevel>('light');
   const [dietPref, setDietPref] = useState<DietPref>('nonveg');
   const [mealsPerDay, setMealsPerDay] = useState<MealsPerDay>(4);
   const [goalPace, setGoalPace] = useState<GoalPace>('steady');
   const [fastingProtocol, setFastingProtocol] = useState<FastingProtocol>('none');
   const [ifInfoVisible, setIfInfoVisible] = useState(false);
+  const [cuisineRegion, setCuisineRegion] = useState<CuisineRegion>('pan-indian');
 
   // Goal date
   const [goalDateMonths, setGoalDateMonths] = useState(6);
@@ -139,11 +147,12 @@ export default function OnboardingScreen() {
       sleepTime,
       waterGoal: 8,
       fastingProtocol,
+      cuisineRegion,
     };
     const targets = computeTargets(base);
     base.waterGoal = waterGoal ?? targets.waterGoal;
     return base;
-  }, [name, age, gender, heightCm, currentWeight, goalWeight, activityLevel, dietPref, mealsPerDay, goalPace, wakeTime, sleepTime, waterGoal, fastingProtocol]);
+  }, [name, age, gender, heightCm, currentWeight, goalWeight, activityLevel, dietPref, mealsPerDay, goalPace, wakeTime, sleepTime, waterGoal, fastingProtocol, cuisineRegion]);
 
   const targets = useMemo(() => (answers ? computeTargets(answers) : null), [answers]);
 
@@ -228,7 +237,7 @@ export default function OnboardingScreen() {
         return (
           <StepWrap title="About you" subtitle="Used to calculate your daily calorie needs.">
             <Text style={styles.fieldLabel}>Age</Text>
-            <NumberField value={age} onChange={setAge} unit="years" />
+            <NumberField value={age} onChange={setAge} unit="years" min={13} max={100} step={1} />
             <Text style={[styles.fieldLabel, { marginTop: spacing.xxl }]}>Gender</Text>
             <Segment
               options={[
@@ -252,18 +261,18 @@ export default function OnboardingScreen() {
                 { value: 'ft', label: 'ft / in' },
               ]}
               value={heightUnit}
-              onChange={(v) => { setHeightUnit(v as 'cm' | 'ft'); setHeight(''); setHeightFt(''); setHeightIn(''); }}
+              onChange={(v) => { setHeightUnit(v as 'cm' | 'ft'); setHeight('170'); setHeightFt('5'); setHeightIn('7'); }}
             />
             <View style={{ marginTop: spacing.xl }}>
               {heightUnit === 'cm' ? (
-                <NumberField value={height} onChange={setHeight} unit="cm" placeholder="170" autoFocus />
+                <NumberField value={height || '170'} onChange={setHeight} unit="cm" min={100} max={250} step={1} />
               ) : (
                 <View style={styles.ftRow}>
                   <View style={styles.ftField}>
-                    <NumberField value={heightFt} onChange={setHeightFt} unit="ft" placeholder="5" autoFocus />
+                    <NumberField value={heightFt || '5'} onChange={setHeightFt} unit="ft" min={4} max={7} step={1} />
                   </View>
                   <View style={styles.ftField}>
-                    <NumberField value={heightIn} onChange={setHeightIn} unit="in" placeholder="7" />
+                    <NumberField value={heightIn || '7'} onChange={setHeightIn} unit="in" min={0} max={11} step={1} />
                   </View>
                 </View>
               )}
@@ -278,7 +287,7 @@ export default function OnboardingScreen() {
       case 3:
         return (
           <StepWrap title="Current weight" subtitle="Your starting point.">
-            <NumberField value={currentWeight} onChange={setCurrentWeight} unit="kg" placeholder="80" autoFocus />
+            <NumberField value={currentWeight || '80'} onChange={setCurrentWeight} unit="kg" min={30} max={300} step={0.5} />
           </StepWrap>
         );
 
@@ -286,7 +295,7 @@ export default function OnboardingScreen() {
       case 4:
         return (
           <StepWrap title="Goal weight" subtitle="Where do you want to be?">
-            <NumberField value={goalWeight} onChange={setGoalWeight} unit="kg" placeholder="70" autoFocus />
+            <NumberField value={goalWeight || '70'} onChange={setGoalWeight} unit="kg" min={30} max={300} step={0.5} />
             {answers && (
               <Text style={styles.hint}>
                 {answers.goalWeight < answers.currentWeight
@@ -364,7 +373,7 @@ export default function OnboardingScreen() {
                 >
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.ifLabel, fastingProtocol === o.value && styles.ifLabelSelected]}>{o.label}</Text>
-                    <Text style={styles.ifWindow}>{o.window}</Text>
+                    <Text style={styles.ifWindow}>{computeIfWindow(o.value, wakeTime, sleepTime)}</Text>
                     <Text style={styles.ifDesc}>{o.desc}</Text>
                   </View>
                   {fastingProtocol === o.value && (
@@ -378,6 +387,19 @@ export default function OnboardingScreen() {
                 Meal times will be set within your eating window.
               </Text>
             )}
+            <Text style={[styles.fieldLabel, { marginTop: spacing.xxl }]}>Cuisine preference</Text>
+            <View style={styles.optionList}>
+              {CUISINE_OPTIONS.map((o) => (
+                <OptionCard
+                  key={o.value}
+                  title={o.title}
+                  subtitle={o.subtitle}
+                  emoji={o.emoji}
+                  selected={cuisineRegion === o.value}
+                  onPress={() => setCuisineRegion(o.value)}
+                />
+              ))}
+            </View>
           </StepWrap>
         );
 
@@ -611,11 +633,15 @@ export default function OnboardingScreen() {
                   {fastingProtocol !== 'none' && (
                     <SummaryLine
                       label="Fasting"
-                      value={`${fastingProtocol} · ${IF_OPTIONS.find((o) => o.value === fastingProtocol)?.window ?? ''}`}
+                      value={`${fastingProtocol} · ${computeIfWindow(fastingProtocol, wakeTime, sleepTime)}`}
                     />
                   )}
                   <SummaryLine label="Wake up" value={fmt12(wakeTime)} />
                   <SummaryLine label="Sleep" value={fmt12(sleepTime)} />
+                  <SummaryLine
+                    label="Cuisine"
+                    value={CUISINE_OPTIONS.find((o) => o.value === cuisineRegion)?.title ?? 'No preference'}
+                  />
                 </GradientCard>
                 {targets.paceAdjusted && (
                   <Text style={styles.warn}>

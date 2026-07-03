@@ -14,21 +14,21 @@ import {
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, NutritionixFood } from '../types';
+import { COLORS, FoodItem, NutritionixFood } from '../types';
 import { searchFoods, getNutrients } from '../services/nutritionix';
 import { useFitStore } from '../store/useFitStore';
 import { success } from '../utils/haptics';
 import { colors } from '../theme';
 
 type RouteParams = {
-  FoodSearch: { mealId: string; mealName: string };
+  FoodSearch: { mealId: string; mealName: string; mode?: 'add' | 'replace' };
 };
 
 export default function FoodSearchScreen() {
   const navigation = useNavigation();
   const route = useRoute<RouteProp<RouteParams, 'FoodSearch'>>();
-  const { mealId, mealName } = route.params;
-  const { logMeal, profile, toggleFavourite, customFoods } = useFitStore();
+  const { mealId, mealName, mode = 'replace' } = route.params;
+  const { logMeal, addFoodToMeal, profile, toggleFavourite, customFoods } = useFitStore();
   const favourites = profile.favouriteFoods ?? [];
 
   const [query, setQuery] = useState('');
@@ -69,10 +69,46 @@ export default function FoodSearchScreen() {
       return;
     }
     const { kcal, protein } = getNutrients(selected, g);
-    logMeal(mealId, kcal, protein);
-    success();
-    setGramModalVisible(false);
-    navigation.goBack();
+    const swg = selected.serving_weight_grams > 0 ? selected.serving_weight_grams : 100;
+    const kcalPer100g = Math.round((selected.nf_calories / swg) * 100);
+    const proteinPer100g = Math.round(((selected.nf_protein / swg) * 100) * 10) / 10;
+
+    if (mode === 'add') {
+      const foodItem: FoodItem = {
+        id: `fs_${Date.now()}`,
+        name: selected.food_name,
+        grams: g,
+        kcalPer100g,
+        proteinPer100g,
+        carbsPer100g: selected.nf_total_carbohydrate != null
+          ? Math.round((selected.nf_total_carbohydrate / swg) * 100)
+          : undefined,
+        fatPer100g: selected.nf_total_fat != null
+          ? Math.round(((selected.nf_total_fat / swg) * 100) * 10) / 10
+          : undefined,
+        kcal,
+        protein,
+      };
+      addFoodToMeal(mealId, foodItem);
+      success();
+      setGramModalVisible(false);
+      setSelected(null);
+      setQuery('');
+      setResults([]);
+      Alert.alert(
+        'Added!',
+        `${selected.food_name.charAt(0).toUpperCase() + selected.food_name.slice(1)} added to meal.`,
+        [
+          { text: 'Add more', style: 'cancel' },
+          { text: 'Done', onPress: () => navigation.goBack() },
+        ]
+      );
+    } else {
+      logMeal(mealId, kcal, protein);
+      success();
+      setGramModalVisible(false);
+      navigation.goBack();
+    }
   };
 
   const handleBarcodeFound = (food: NutritionixFood) => {
@@ -291,7 +327,7 @@ export default function FoodSearchScreen() {
                     size={20}
                     color={COLORS.bg}
                   />
-                  <Text style={styles.confirmText}>Log this food</Text>
+                  <Text style={styles.confirmText}>{mode === 'add' ? 'Add to meal' : 'Log this food'}</Text>
                 </TouchableOpacity>
               </>
             )}

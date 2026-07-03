@@ -394,10 +394,17 @@ export default function AnalyticsScreen() {
                   <Text style={styles.statsValue}>{weightHistory.length}</Text>
                 </View>
                 <View style={styles.statsRow}>
-                  <Text style={styles.statsLabel}>Total weight lost</Text>
-                  <Text style={[styles.statsValue, { color: COLORS.green }]}>
-                    {(profile.startWeight - profile.currentWeight).toFixed(1)} kg
-                  </Text>
+                  {(() => {
+                    const d = profile.startWeight - profile.currentWeight;
+                    return (
+                      <>
+                        <Text style={styles.statsLabel}>{d >= 0 ? 'Total weight lost' : 'Total weight gained'}</Text>
+                        <Text style={[styles.statsValue, { color: d >= 0 ? COLORS.green : COLORS.orange }]}>
+                          {Math.abs(d).toFixed(1)} kg
+                        </Text>
+                      </>
+                    );
+                  })()}
                 </View>
               </View>
             </View>

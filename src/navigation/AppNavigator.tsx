@@ -27,7 +27,7 @@ import { NutritionixFood } from '../types';
 
 export type RootStackParamList = {
   Tabs: undefined;
-  FoodSearch: { mealId: string; mealName: string };
+  FoodSearch: { mealId: string; mealName: string; mode?: 'add' | 'replace' };
   Exercise: undefined;
   Water: undefined;
   EditProfile: undefined;

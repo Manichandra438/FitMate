@@ -126,6 +126,7 @@ export interface UserProfile {
   favouriteFoods?: string[];
   fastingProtocol?: FastingProtocol;
   streakFreezeUsedAt?: string;
+  cuisineRegion?: CuisineRegion;
 }
 
 export interface OnboardingAnswers {
@@ -144,6 +145,7 @@ export interface OnboardingAnswers {
   waterGoal: number;
   goalDate?: string;
   fastingProtocol?: FastingProtocol;
+  cuisineRegion?: CuisineRegion;
 }
 
 export interface PlanTargets {
@@ -158,6 +160,8 @@ export interface PlanTargets {
 }
 
 export type MealSlotType = 'breakfast' | 'snack' | 'lunch' | 'dinner';
+export type CuisineRegion = 'north-indian' | 'south-indian' | 'pan-indian';
+export type FoodSearchMode = 'add' | 'replace';
 
 export interface TemplateFood {
   name: string;
@@ -172,6 +176,7 @@ export interface MealTemplate {
   name: string;
   slot: MealSlotType;
   dietPref: DietPref[];
+  cuisineRegion?: CuisineRegion[];
   foods: TemplateFood[];
 }
 

@@ -36,9 +36,11 @@ export default function FastingTimerCard({ profile }: Props) {
   if (!parsed) return null;
 
   const { eatHours } = parsed;
+  const IF_OFFSETS_MAP: Record<string, number> = { '16:8': 1, '18:6': 2, '20:4': 4 };
+  const offsetH = IF_OFFSETS_MAP[profile.fastingProtocol ?? ''] ?? 0;
   const [wakeH, wakeM] = (profile.wakeTime ?? '07:00').split(':').map(Number);
 
-  const eatStart = dayjs().hour(wakeH).minute(wakeM).second(0).millisecond(0);
+  const eatStart = dayjs().hour(wakeH).minute(wakeM).second(0).millisecond(0).add(offsetH, 'hour');
   const eatEnd = eatStart.add(eatHours, 'hour');
 
   const isEating = now.valueOf() >= eatStart.valueOf() && now.valueOf() < eatEnd.valueOf();

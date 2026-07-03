@@ -78,10 +78,11 @@ export default function WeightScreen() {
   const bmi = computeBMI(profile.currentWeight, profile.heightCm);
   const bmiInfo = bmiCategory(bmi);
 
-  const totalLost =
-    weightHistory.length > 0
-      ? (profile.startWeight - profile.currentWeight).toFixed(1)
-      : '0';
+  const lostDelta = weightHistory.length > 0
+    ? profile.startWeight - profile.currentWeight
+    : 0;
+  const totalLost = Math.abs(lostDelta).toFixed(1);
+  const isGained = lostDelta < 0;
 
   const toGoal = (profile.currentWeight - profile.goalWeight).toFixed(1);
 
@@ -138,10 +139,10 @@ export default function WeightScreen() {
             <Text style={styles.statLabel}>Current (kg)</Text>
           </View>
           <View style={styles.statCard}>
-            <Text style={[styles.statValue, { color: COLORS.green }]}>
+            <Text style={[styles.statValue, { color: isGained ? COLORS.orange : COLORS.green }]}>
               {totalLost}
             </Text>
-            <Text style={styles.statLabel}>Lost (kg)</Text>
+            <Text style={styles.statLabel}>{isGained ? 'Gained (kg)' : 'Lost (kg)'}</Text>
           </View>
           <View style={styles.statCard}>
             <Text style={[styles.statValue, { color: COLORS.orange }]}>

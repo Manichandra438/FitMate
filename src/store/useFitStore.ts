@@ -97,7 +97,9 @@ interface FitState {
   hydrateFromCloud: (payload: Partial<CloudPayload>) => void;
   resetAll: () => void;
   logWakeUp: () => void;
-  logMeal: (mealId: string, kcal: number, protein: number) => void;
+  logMeal: (mealId: string, kcal: number, protein: number, foods?: FoodItem[]) => void;
+  addFoodToMeal: (mealId: string, food: FoodItem) => void;
+  removeFoodFromMeal: (mealId: string, foodId: string) => void;
   skipMeal: (mealId: string) => void;
   unlogMeal: (mealId: string) => void;
   addWater: () => void;
@@ -169,6 +171,7 @@ export const useFitStore = create<FitState>()(
             sleepTime: answers.sleepTime,
             goalDate: answers.goalDate ?? targets.goalDate ?? undefined,
             fastingProtocol: answers.fastingProtocol ?? 'none',
+            cuisineRegion: answers.cuisineRegion,
             onboarded: true,
           },
           mealPlan,
@@ -235,7 +238,7 @@ export const useFitStore = create<FitState>()(
         }
       },
 
-      logMeal: (mealId, kcal, protein) => {
+      logMeal: (mealId, kcal, protein, foods) => {
         const date = todayStr();
         get().ensureTodayLog();
         set((s) => ({
@@ -249,12 +252,61 @@ export const useFitStore = create<FitState>()(
                       ...m,
                       logged: true,
                       skipped: false,
+                      foods: foods ?? m.foods,
                       totalKcal: kcal,
                       totalProtein: protein,
                       loggedAt: dayjs().format('h:mm A'),
                     }
                   : m
               ),
+            },
+          },
+        }));
+      },
+
+      addFoodToMeal: (mealId, food) => {
+        const date = todayStr();
+        get().ensureTodayLog();
+        set((s) => ({
+          logs: {
+            ...s.logs,
+            [date]: {
+              ...s.logs[date],
+              meals: s.logs[date].meals.map((m) => {
+                if (m.mealId !== mealId) return m;
+                const foods = [...m.foods, { ...food, id: `adf_${Date.now()}` }];
+                return {
+                  ...m,
+                  logged: true,
+                  skipped: false,
+                  foods,
+                  totalKcal: Math.round(foods.reduce((acc, f) => acc + f.kcal, 0)),
+                  totalProtein: Math.round(foods.reduce((acc, f) => acc + f.protein, 0) * 10) / 10,
+                  loggedAt: m.loggedAt ?? dayjs().format('h:mm A'),
+                };
+              }),
+            },
+          },
+        }));
+      },
+
+      removeFoodFromMeal: (mealId, foodId) => {
+        const date = todayStr();
+        set((s) => ({
+          logs: {
+            ...s.logs,
+            [date]: {
+              ...s.logs[date],
+              meals: s.logs[date].meals.map((m) => {
+                if (m.mealId !== mealId) return m;
+                const foods = m.foods.filter((f) => f.id !== foodId);
+                return {
+                  ...m,
+                  foods,
+                  totalKcal: Math.round(foods.reduce((acc, f) => acc + f.kcal, 0)),
+                  totalProtein: Math.round(foods.reduce((acc, f) => acc + f.protein, 0) * 10) / 10,
+                };
+              }),
             },
           },
         }));
@@ -293,6 +345,7 @@ export const useFitStore = create<FitState>()(
                       ...m,
                       logged: false,
                       skipped: false,
+                      foods: planMeal?.foods ?? m.foods,
                       totalKcal: planMeal?.totalKcal ?? m.totalKcal,
                       totalProtein: planMeal?.totalProtein ?? m.totalProtein,
                       loggedAt: undefined,
@@ -608,7 +661,7 @@ export const useFitStore = create<FitState>()(
     {
       name: 'fitmate-storage',
       storage: createJSONStorage(() => AsyncStorage),
-      version: 5,
+      version: 6,
       migrate: (persisted: any, version) => {
         if (version < 2 && persisted) {
           persisted.profile = { ...DEFAULT_PROFILE, ...persisted.profile, onboarded: false };
@@ -623,6 +676,7 @@ export const useFitStore = create<FitState>()(
         if (version < 5 && persisted) {
           persisted.frozenDates = persisted.frozenDates ?? [];
         }
+        // v6: cuisineRegion added (undefined = show all); MealLog.foods tracking fixed (no data change needed)
         return persisted;
       },
     }

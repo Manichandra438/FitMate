@@ -8,13 +8,15 @@ import {
   Modal,
   TextInput,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, Meal, MealSlotType, MealTemplate } from '../types';
 import { colors } from '../theme';
 import { MEAL_TEMPLATES } from '../data/mealTemplates';
-import { swapMealTemplate } from '../services/planGenerator';
+import { matchesCuisine, swapMealTemplate } from '../services/planGenerator';
 import { useFitStore } from '../store/useFitStore';
 import MealCard from '../components/MealCard';
 import BackfillQuickAddModal from '../components/BackfillQuickAddModal';
@@ -23,7 +25,7 @@ import { success } from '../utils/haptics';
 
 export default function MealsScreen() {
   const navigation = useNavigation<any>();
-  const { mealPlan, logMeal, skipMeal, unlogMeal, updateSingleMeal, profile, getTodayLog, ensureTodayLog, getTodayTotals, copyYesterdayMeals, removeQuickAdd } =
+  const { mealPlan, logMeal, addFoodToMeal, removeFoodFromMeal, skipMeal, unlogMeal, updateSingleMeal, profile, getTodayLog, ensureTodayLog, getTodayTotals, copyYesterdayMeals, removeQuickAdd } =
     useFitStore();
   const [selectedMeal, setSelectedMeal] = useState<Meal | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
@@ -58,7 +60,8 @@ export default function MealsScreen() {
     if (!selectedMeal) return;
     const slot = inferSlot(selectedMeal.name);
     const options = MEAL_TEMPLATES.filter(
-      (t) => t.slot === slot && t.dietPref.includes(profile.dietPref) && t.name !== selectedMeal.name
+      (t) => t.slot === slot && t.dietPref.includes(profile.dietPref) &&
+        matchesCuisine(t, profile.cuisineRegion) && t.name !== selectedMeal.name
     );
     setSwapOptions(options);
     setModalVisible(false);
@@ -88,10 +91,20 @@ export default function MealsScreen() {
 
   const handleLog = () => {
     if (!selectedMeal) return;
-    logMeal(selectedMeal.id, selectedMeal.totalKcal, selectedMeal.totalProtein);
+    logMeal(selectedMeal.id, selectedMeal.totalKcal, selectedMeal.totalProtein, selectedMeal.foods);
     closeModal();
     success();
     confetti.current?.burst();
+  };
+
+  const handleAddFood = () => {
+    if (!selectedMeal) return;
+    closeModal();
+    navigation.navigate('FoodSearch', {
+      mealId: selectedMeal.id,
+      mealName: selectedMeal.name,
+      mode: 'add',
+    });
   };
 
   const handleSaveEdit = () => {
@@ -278,6 +291,10 @@ export default function MealsScreen() {
         animationType="slide"
         onRequestClose={closeModal}
       >
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
         <TouchableOpacity
           style={styles.modalOverlay}
           activeOpacity={1}
@@ -289,6 +306,11 @@ export default function MealsScreen() {
             onPress={() => {}}
           >
             <View style={styles.modalHandle} />
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              bounces={false}
+              showsVerticalScrollIndicator={false}
+            >
             {selectedMeal && (
               <>
                 <View style={styles.modalTitleRow}>
@@ -341,6 +363,11 @@ export default function MealsScreen() {
                       <Text style={styles.btnPrimaryText}>Save changes</Text>
                     </TouchableOpacity>
 
+                    <TouchableOpacity style={styles.btnSecondary} onPress={handleAddFood}>
+                      <Ionicons name="add-circle-outline" size={18} color={colors.primaryDark} />
+                      <Text style={styles.btnSecondaryText}>Add food</Text>
+                    </TouchableOpacity>
+
                     <TouchableOpacity style={styles.btnSecondary} onPress={handleFoodSearch}>
                       <Ionicons name="search" size={18} color={colors.primaryDark} />
                       <Text style={styles.btnSecondaryText}>Search / replace food</Text>
@@ -353,54 +380,85 @@ export default function MealsScreen() {
                 ) : (
                   /* ── LOG MODE ── */
                   <>
-                    <View style={styles.foodsList}>
-                      {selectedMeal.foods.map((food) => (
-                        <View key={food.id} style={styles.foodRow}>
-                          <Text style={styles.foodName}>{food.name}</Text>
-                          <Text style={styles.foodMacros}>
-                            {food.grams}g · {food.kcal} kcal
-                          </Text>
-                        </View>
-                      ))}
-                    </View>
+                    {(() => {
+                      const mealLog = log.meals.find((m) => m.mealId === selectedMeal.id);
+                      const displayFoods = mealLog?.foods?.length ? mealLog.foods : selectedMeal.foods;
+                      const displayKcal = mealLog?.logged ? mealLog.totalKcal : selectedMeal.totalKcal;
+                      const displayProtein = mealLog?.logged ? mealLog.totalProtein : selectedMeal.totalProtein;
+                      const isLogged = mealLog?.logged ?? false;
+                      return (
+                        <>
+                          <View style={styles.foodsList}>
+                            {displayFoods.map((food) => (
+                              <View key={food.id} style={styles.foodRow}>
+                                <Text style={styles.foodName}>{food.name}</Text>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                  <Text style={styles.foodMacros}>
+                                    {food.grams}g · {food.kcal} kcal
+                                  </Text>
+                                  {isLogged && (
+                                    <TouchableOpacity
+                                      onPress={() => removeFoodFromMeal(selectedMeal.id, food.id)}
+                                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                    >
+                                      <Ionicons name="close-circle" size={16} color={COLORS.textSecondary} />
+                                    </TouchableOpacity>
+                                  )}
+                                </View>
+                              </View>
+                            ))}
+                          </View>
 
-                    <View style={styles.mealTotals}>
-                      <Text style={styles.mealTotal}>
-                        Total:{' '}
-                        <Text style={{ color: COLORS.green }}>
-                          {selectedMeal.totalKcal} kcal
-                        </Text>{' '}
-                        ·{' '}
-                        <Text style={{ color: COLORS.orange }}>
-                          {Math.round(selectedMeal.totalProtein)}g protein
-                        </Text>
-                      </Text>
-                    </View>
+                          <View style={styles.mealTotals}>
+                            <Text style={styles.mealTotal}>
+                              Total:{' '}
+                              <Text style={{ color: COLORS.green }}>{displayKcal} kcal</Text>
+                              {' · '}
+                              <Text style={{ color: COLORS.orange }}>{Math.round(displayProtein)}g protein</Text>
+                            </Text>
+                          </View>
 
-                    <TouchableOpacity style={styles.btnPrimary} onPress={handleLog}>
-                      <Ionicons name="checkmark-circle" size={20} color="#fff" />
-                      <Text style={styles.btnPrimaryText}>Log this meal as planned</Text>
-                    </TouchableOpacity>
+                          {!isLogged && (
+                            <TouchableOpacity style={styles.btnPrimary} onPress={handleLog}>
+                              <Ionicons name="checkmark-circle" size={20} color="#fff" />
+                              <Text style={styles.btnPrimaryText}>Log this meal as planned</Text>
+                            </TouchableOpacity>
+                          )}
 
-                    <TouchableOpacity style={styles.btnSecondary} onPress={handleFoodSearch}>
-                      <Ionicons name="search" size={18} color={colors.primaryDark} />
-                      <Text style={styles.btnSecondaryText}>Search / replace food</Text>
-                    </TouchableOpacity>
+                          <TouchableOpacity style={styles.btnSecondary} onPress={handleAddFood}>
+                            <Ionicons name="add-circle-outline" size={18} color={colors.primaryDark} />
+                            <Text style={styles.btnSecondaryText}>Add food</Text>
+                          </TouchableOpacity>
 
-                    <TouchableOpacity style={styles.btnSecondary} onPress={handleSwapOpen}>
-                      <Ionicons name="shuffle" size={18} color={colors.primaryDark} />
-                      <Text style={styles.btnSecondaryText}>Swap meal</Text>
-                    </TouchableOpacity>
+                          {!isLogged && (
+                            <TouchableOpacity style={styles.btnSecondary} onPress={handleSwapOpen}>
+                              <Ionicons name="shuffle" size={18} color={colors.primaryDark} />
+                              <Text style={styles.btnSecondaryText}>Swap meal</Text>
+                            </TouchableOpacity>
+                          )}
 
-                    <TouchableOpacity style={styles.btnDanger} onPress={handleSkip}>
-                      <Text style={styles.btnDangerText}>Skip this meal</Text>
-                    </TouchableOpacity>
+                          {!isLogged && (
+                            <TouchableOpacity style={styles.btnDanger} onPress={handleSkip}>
+                              <Text style={styles.btnDangerText}>Skip this meal</Text>
+                            </TouchableOpacity>
+                          )}
+
+                          {isLogged && (
+                            <TouchableOpacity style={styles.btnDanger} onPress={handleUnlog}>
+                              <Text style={styles.btnDangerText}>Undo log</Text>
+                            </TouchableOpacity>
+                          )}
+                        </>
+                      );
+                    })()}
                   </>
                 )}
               </>
             )}
+            </ScrollView>
           </TouchableOpacity>
         </TouchableOpacity>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );

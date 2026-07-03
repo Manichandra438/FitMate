@@ -14,12 +14,23 @@ import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { cardShadow, colors, radius, spacing } from '../theme';
 import { useFitStore } from '../store/useFitStore';
-import { computeTargets, generatePlan } from '../services/planGenerator';
+import { computeIfWindow, computeTargets, generatePlan } from '../services/planGenerator';
 import { flush } from '../services/sync';
 import { OptionCard, Segment } from './onboarding/inputs';
 import SectionHeader from '../components/ui/SectionHeader';
 import IFInfoModal from '../components/IFInfoModal';
-import type { ActivityLevel, DietPref, FastingProtocol, Gender, GoalPace, MealsPerDay } from '../types';
+import DrumPicker from '../components/ui/DrumPicker';
+import type { ActivityLevel, CuisineRegion, DietPref, FastingProtocol, Gender, GoalPace, MealsPerDay } from '../types';
+
+function makeIntRange(min: number, max: number): string[] {
+  return Array.from({ length: max - min + 1 }, (_, i) => String(i + min));
+}
+function makeStepRange(min: number, max: number, step: number): string[] {
+  const arr: string[] = [];
+  const dec = step < 1 ? 1 : 0;
+  for (let v = min; v <= max; v = Math.round((v + step) * 1e6) / 1e6) arr.push(v.toFixed(dec));
+  return arr;
+}
 
 // ─── Time constants ──────────────────────────────────────────────────────────
 
@@ -80,6 +91,12 @@ const DIET_OPTIONS: { value: DietPref; title: string; subtitle: string; emoji: s
   { value: 'nonveg',      title: 'Non-vegetarian', subtitle: 'All foods included',  emoji: '🍗' },
 ];
 
+const CUISINE_OPTIONS: { value: CuisineRegion; title: string; subtitle: string; emoji: string }[] = [
+  { value: 'pan-indian',   title: 'No preference',  subtitle: 'A mix of common Indian meals', emoji: '🍱' },
+  { value: 'north-indian', title: 'North Indian',    subtitle: 'Dal, roti, rajma, paneer',     emoji: '🫓' },
+  { value: 'south-indian', title: 'South Indian',    subtitle: 'Idli, dosa, sambar, rasam',    emoji: '🥣' },
+];
+
 const IF_OPTIONS: { value: FastingProtocol; label: string; window: string; desc: string }[] = [
   { value: 'none', label: 'No fasting', window: 'All day', desc: 'Meals spread across your wake hours' },
   { value: '16:8', label: '16:8', window: '12 pm – 8 pm', desc: 'Fast 16h, eat within an 8-hour window' },
@@ -112,6 +129,17 @@ export default function EditProfileScreen() {
   const [sleepTime, setSleepTime]     = useState(profile.sleepTime);
   const [waterGoal, setWaterGoal]     = useState(profile.waterGoal);
   const [fastingProtocol, setFastingProtocol] = useState<FastingProtocol>(profile.fastingProtocol ?? 'none');
+  const [cuisineRegion, setCuisineRegion] = useState<CuisineRegion>(profile.cuisineRegion ?? 'pan-indian');
+
+  const weightVals = useMemo(() => makeStepRange(30, 300, 0.5), []);
+  const cwIndex = useMemo(() => {
+    const idx = weightVals.indexOf((parseFloat(currentWeight) || 70).toFixed(1));
+    return idx >= 0 ? idx : weightVals.indexOf('70.0');
+  }, [currentWeight, weightVals]);
+  const gwIndex = useMemo(() => {
+    const idx = weightVals.indexOf((parseFloat(goalWeight) || 65).toFixed(1));
+    return idx >= 0 ? idx : weightVals.indexOf('65.0');
+  }, [goalWeight, weightVals]);
   const [ifInfoVisible, setIfInfoVisible] = useState(false);
   const [saving, setSaving]           = useState(false);
 
@@ -157,6 +185,7 @@ export default function EditProfileScreen() {
         currentWeight: parsedWeight, goalWeight: parsedGoal,
         activityLevel, dietPref, mealsPerDay, goalPace,
         wakeTime, sleepTime, waterGoal, fastingProtocol,
+        cuisineRegion,
         goalDate: profile.goalDate,
       };
       const { targets, mealPlan } = generatePlan(answers);
@@ -165,6 +194,7 @@ export default function EditProfileScreen() {
         currentWeight: parsedWeight, goalWeight: parsedGoal,
         activityLevel, dietPref, mealsPerDay, goalPace,
         wakeTime, sleepTime, waterGoal, fastingProtocol,
+        cuisineRegion,
         calorieGoal: targets.calorieGoal,
         proteinGoal: targets.proteinGoal,
         goalDate: profile.goalDate ?? targets.goalDate ?? undefined,
@@ -207,7 +237,15 @@ export default function EditProfileScreen() {
         />
 
         <Label>Age</Label>
-        <Stepper value={age} min={10} max={100} onChange={setAge} unit="yrs" />
+        <View style={styles.drumRow}>
+          <DrumPicker
+            values={makeIntRange(10, 100)}
+            selectedIndex={Math.max(0, age - 10)}
+            onChange={(i) => setAge(i + 10)}
+            unit="yrs"
+            width={140}
+          />
+        </View>
 
         <Label>Gender</Label>
         <Segment<Gender>
@@ -228,58 +266,59 @@ export default function EditProfileScreen() {
             onChange={setHeightUnit}
           />
         </View>
-        {heightUnit === 'cm' ? (
-          <TextInput
-            style={styles.textInput}
-            value={heightCm}
-            onChangeText={setHeightCm}
-            keyboardType="number-pad"
-            placeholder="170 cm"
-            placeholderTextColor={colors.textMuted}
-          />
-        ) : (
-          <View style={styles.row}>
-            <TextInput
-              style={[styles.textInput, { flex: 1 }]}
-              value={heightFt}
-              onChangeText={setHeightFt}
-              keyboardType="number-pad"
-              placeholder="5 ft"
-              placeholderTextColor={colors.textMuted}
+        <View style={styles.drumRow}>
+          {heightUnit === 'cm' ? (
+            <DrumPicker
+              values={makeIntRange(100, 250)}
+              selectedIndex={Math.max(0, (parseInt(heightCm, 10) || 170) - 100)}
+              onChange={(i) => setHeightCm(String(i + 100))}
+              unit="cm"
+              width={140}
             />
-            <TextInput
-              style={[styles.textInput, { flex: 1 }]}
-              value={heightIn}
-              onChangeText={setHeightIn}
-              keyboardType="number-pad"
-              placeholder="7 in"
-              placeholderTextColor={colors.textMuted}
-            />
-          </View>
-        )}
+          ) : (
+            <>
+              <DrumPicker
+                values={makeIntRange(4, 7)}
+                selectedIndex={Math.max(0, (parseInt(heightFt, 10) || 5) - 4)}
+                onChange={(i) => setHeightFt(String(i + 4))}
+                unit="ft"
+                width={110}
+              />
+              <DrumPicker
+                values={makeIntRange(0, 11)}
+                selectedIndex={Math.max(0, parseInt(heightIn, 10) || 0)}
+                onChange={(i) => setHeightIn(String(i))}
+                unit="in"
+                width={110}
+              />
+            </>
+          )}
+        </View>
         {heightUnit === 'ft' && resolvedCm > 0 && (
           <Text style={styles.hint}>{resolvedCm} cm</Text>
         )}
 
         <Label>Current weight (kg)</Label>
-        <TextInput
-          style={styles.textInput}
-          value={currentWeight}
-          onChangeText={setCurrentWeight}
-          keyboardType="decimal-pad"
-          placeholder="e.g. 72.5"
-          placeholderTextColor={colors.textMuted}
-        />
+        <View style={styles.drumRow}>
+          <DrumPicker
+            values={weightVals}
+            selectedIndex={cwIndex}
+            onChange={(i) => setCurrentWeight(weightVals[i])}
+            unit="kg"
+            width={140}
+          />
+        </View>
 
         <Label>Goal weight (kg)</Label>
-        <TextInput
-          style={styles.textInput}
-          value={goalWeight}
-          onChangeText={setGoalWeight}
-          keyboardType="decimal-pad"
-          placeholder="e.g. 65.0"
-          placeholderTextColor={colors.textMuted}
-        />
+        <View style={styles.drumRow}>
+          <DrumPicker
+            values={weightVals}
+            selectedIndex={gwIndex}
+            onChange={(i) => setGoalWeight(weightVals[i])}
+            unit="kg"
+            width={140}
+          />
+        </View>
 
         {/* ── FITNESS GOALS ─────────────────────────── */}
         <SectionHeader title="Fitness goals" />
@@ -361,13 +400,27 @@ export default function EditProfileScreen() {
             >
               <View style={{ flex: 1 }}>
                 <Text style={[styles.ifLabel, fastingProtocol === o.value && styles.ifLabelSelected]}>{o.label}</Text>
-                <Text style={styles.ifWindow}>{o.window}</Text>
+                <Text style={styles.ifWindow}>{computeIfWindow(o.value, wakeTime, sleepTime)}</Text>
                 <Text style={styles.ifDesc}>{o.desc}</Text>
               </View>
               {fastingProtocol === o.value && (
                 <Ionicons name="checkmark-circle" size={22} color={colors.primary} />
               )}
             </TouchableOpacity>
+          ))}
+        </View>
+
+        <Label>Cuisine preference</Label>
+        <View style={styles.optionList}>
+          {CUISINE_OPTIONS.map((o) => (
+            <OptionCard
+              key={o.value}
+              title={o.title}
+              subtitle={o.subtitle}
+              emoji={o.emoji}
+              selected={cuisineRegion === o.value}
+              onPress={() => setCuisineRegion(o.value)}
+            />
           ))}
         </View>
 
@@ -579,6 +632,7 @@ const styles = StyleSheet.create({
   },
 
   row: { flexDirection: 'row', gap: spacing.sm },
+  drumRow: { alignItems: 'center', flexDirection: 'row', gap: spacing.lg, marginBottom: spacing.sm },
 
   hint: {
     fontSize: 12,

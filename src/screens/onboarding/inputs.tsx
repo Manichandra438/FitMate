@@ -1,13 +1,13 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radius, spacing } from '../../theme';
+import DrumPicker from '../../components/ui/DrumPicker';
 
 interface OptionCardProps {
   title: string;
@@ -42,22 +42,44 @@ interface NumberFieldProps {
   unit: string;
   placeholder?: string;
   autoFocus?: boolean;
+  min?: number;
+  max?: number;
+  step?: number;
 }
 
-export function NumberField({ value, onChange, unit, placeholder, autoFocus }: NumberFieldProps) {
+export function NumberField({
+  value,
+  onChange,
+  unit,
+  min = 0,
+  max = 300,
+  step = 1,
+}: NumberFieldProps) {
+  const values = useMemo(() => {
+    const arr: string[] = [];
+    const decimals = step < 1 ? 1 : 0;
+    for (let v = min; v <= max; v = Math.round((v + step) * 1e6) / 1e6) {
+      arr.push(v.toFixed(decimals));
+    }
+    return arr;
+  }, [min, max, step]);
+
+  const selectedIndex = useMemo(() => {
+    const idx = values.indexOf(
+      parseFloat(value).toFixed(step < 1 ? 1 : 0),
+    );
+    return idx >= 0 ? idx : Math.floor(values.length / 2);
+  }, [values, value, step]);
+
   return (
     <View style={styles.numberWrap}>
-      <TextInput
-        style={styles.numberInput}
-        value={value}
-        onChangeText={onChange}
-        keyboardType="decimal-pad"
-        placeholder={placeholder}
-        placeholderTextColor={colors.textMuted}
-        autoFocus={autoFocus}
-        maxLength={6}
+      <DrumPicker
+        values={values}
+        selectedIndex={selectedIndex}
+        onChange={(i) => onChange(values[i])}
+        unit={unit}
+        width={160}
       />
-      <Text style={styles.numberUnit}>{unit}</Text>
     </View>
   );
 }
@@ -110,22 +132,9 @@ const styles = StyleSheet.create({
   optionTitle: { fontSize: 16, fontWeight: '700', color: colors.textPrimary },
   optionSubtitle: { fontSize: 13, color: colors.textSecondary, marginTop: 2 },
   numberWrap: {
-    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.sm,
   },
-  numberInput: {
-    fontSize: 52,
-    fontWeight: '800',
-    color: colors.textPrimary,
-    minWidth: 130,
-    textAlign: 'center',
-    borderBottomWidth: 2,
-    borderBottomColor: colors.primary,
-    paddingVertical: 4,
-  },
-  numberUnit: { fontSize: 20, fontWeight: '600', color: colors.textSecondary },
   segment: {
     flexDirection: 'row',
     backgroundColor: colors.surfaceHigh,
