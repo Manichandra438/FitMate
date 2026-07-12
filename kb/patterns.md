@@ -1,7 +1,7 @@
 ---
 project: FitMate
 confidence: high
-last-verified: 2026-06-20
+last-verified: 2026-07-12
 status: active
 ---
 
@@ -124,6 +124,16 @@ import FadeSlideIn from '../components/anim/FadeSlideIn';
 import { useCountUp } from '../hooks/useCountUp';
 const display = useCountUp(targetNumber);
 ```
+
+## DrumPicker (wheel picker)
+`src/components/ui/DrumPicker.tsx` — ScrollView-based snap wheel, replaces raw numeric `TextInput` for onboarding + EditProfile fields (height, weight, age, etc).
+```tsx
+<DrumPicker values={['150','151',...]} selectedIndex={idx} onChange={setIdx} unit="cm" />
+```
+- Item height fixed `58px`, 5 visible rows, `snapToInterval` + `decelerationRate="fast"`
+- Haptic tick (`expo-haptics`, Light impact) fires on settle, skipped on web
+- Parent controls value via `selectedIndex` + `onChange`; picker self-syncs on external change (e.g. unit toggle) but ignores it mid-drag (`isScrolling` ref guard)
+- No native gradient fade on Android (RN core has none) — top/bottom fade is a placeholder view, dimming done via per-item opacity/fontSize/weight by distance from center instead
 
 ## Keyboard + modal pattern
 Bottom sheet modals that contain text inputs need:

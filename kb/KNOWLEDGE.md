@@ -1,7 +1,7 @@
 ---
 project: FitMate
 created: 2026-06-20
-last-updated: 2026-06-20
+last-updated: 2026-07-12
 ---
 
 # Brain Index — FitMate
