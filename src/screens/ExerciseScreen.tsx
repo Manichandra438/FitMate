@@ -269,12 +269,16 @@ export default function ExerciseScreen() {
                   onPress={() => openEdit(w)}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   style={{ marginRight: 8 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Edit ${w.activity}`}
                 >
                   <Ionicons name="pencil-outline" size={18} color={colors.textSecondary} />
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => removeWorkout(w.id)}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Remove ${w.activity}`}
                 >
                   <Ionicons name="close-circle" size={20} color={colors.textMuted} />
                 </TouchableOpacity>

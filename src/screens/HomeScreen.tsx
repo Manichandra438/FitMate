@@ -177,6 +177,8 @@ export default function HomeScreen() {
             <TouchableOpacity
               onPress={() => setBannerDismissed(true)}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityRole="button"
+              accessibilityLabel="Dismiss"
             >
               <Ionicons name="close" size={16} color={colors.textMuted} />
             </TouchableOpacity>

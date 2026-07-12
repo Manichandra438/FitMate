@@ -64,7 +64,12 @@ export default function IFInfoModal({ visible, onClose }: Props) {
 
           <View style={styles.titleRow}>
             <Text style={styles.title}>What is Intermittent Fasting?</Text>
-            <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <TouchableOpacity
+              onPress={onClose}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityRole="button"
+              accessibilityLabel="Close"
+            >
               <Ionicons name="close" size={22} color={colors.textSecondary} />
             </TouchableOpacity>
           </View>
