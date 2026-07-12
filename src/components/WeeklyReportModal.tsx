@@ -124,7 +124,12 @@ export default function WeeklyReportModal({ visible, onClose }: Props) {
               <Text style={styles.title}>Weekly Report</Text>
               <Text style={styles.subtitle}>{weekStart} – {weekEnd}</Text>
             </View>
-            <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
+            <TouchableOpacity
+              onPress={onClose}
+              style={styles.closeBtn}
+              accessibilityRole="button"
+              accessibilityLabel="Close"
+            >
               <Ionicons name="close" size={20} color={colors.textSecondary} />
             </TouchableOpacity>
           </View>

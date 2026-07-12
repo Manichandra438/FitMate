@@ -5,9 +5,12 @@ import dayjs from 'dayjs';
 import {
   collection,
   doc,
+  documentId,
   getDoc,
   getDocs,
+  query,
   serverTimestamp,
+  where,
   writeBatch,
 } from 'firebase/firestore';
 import { auth, db } from './firebase';
@@ -35,16 +38,18 @@ async function loadQueue() {
   try {
     const raw = await AsyncStorage.getItem(QUEUE_KEY);
     if (raw) dirty = new Set(JSON.parse(raw));
-  } catch {
+  } catch (err) {
     // corrupted queue — start fresh
+    console.warn('Failed to load sync queue:', err);
   }
 }
 
 async function saveQueue() {
   try {
     await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify([...dirty]));
-  } catch {
+  } catch (err) {
     // best effort
+    console.warn('Failed to save sync queue:', err);
   }
 }
 
@@ -134,12 +139,11 @@ async function fetchLogsInBackground(uid: string, generation: number, preExistin
   try {
     const logs: Record<string, DayLog> = {};
     const cutoff = dayjs().subtract(HYDRATE_DAYS, 'day').format('YYYY-MM-DD');
-    const logsSnap = await getDocs(collection(db, 'users', uid, 'logs'));
+    const logsQuery = query(collection(db, 'users', uid, 'logs'), where(documentId(), '>=', cutoff));
+    const logsSnap = await getDocs(logsQuery);
     logsSnap.forEach((d) => {
-      if (d.id >= cutoff) {
-        const { updatedAt: _ignored, ...log } = d.data() as DayLog & { updatedAt?: unknown };
-        logs[d.id] = log as DayLog;
-      }
+      const { updatedAt: _ignored, ...log } = d.data() as DayLog & { updatedAt?: unknown };
+      logs[d.id] = log as DayLog;
     });
     // Abort if stopSync() was called while we were fetching.
     if (generation !== syncGeneration) return;
@@ -168,12 +172,11 @@ export async function fetchCloud(uid: string): Promise<CloudPayload | null> {
   const data = userSnap.data();
   const logs: Record<string, DayLog> = {};
   const cutoff = dayjs().subtract(HYDRATE_DAYS, 'day').format('YYYY-MM-DD');
-  const logsSnap = await getDocs(collection(db, 'users', uid, 'logs'));
+  const logsQuery = query(collection(db, 'users', uid, 'logs'), where(documentId(), '>=', cutoff));
+  const logsSnap = await getDocs(logsQuery);
   logsSnap.forEach((d) => {
-    if (d.id >= cutoff) {
-      const { updatedAt: _ignored, ...log } = d.data() as DayLog & { updatedAt?: unknown };
-      logs[d.id] = log as DayLog;
-    }
+    const { updatedAt: _ignored, ...log } = d.data() as DayLog & { updatedAt?: unknown };
+    logs[d.id] = log as DayLog;
   });
 
   return {
@@ -243,8 +246,9 @@ export async function startSync(): Promise<'ready' | 'onboarding'> {
       await AsyncStorage.removeMany(['fitmate-storage', QUEUE_KEY]);
     }
     await AsyncStorage.setItem(UID_KEY, uid);
-  } catch {
+  } catch (err) {
     // best effort
+    console.warn('Failed to check/reset previous-user local state:', err);
   }
 
   await loadQueue();
@@ -346,12 +350,20 @@ export function stopSync() {
  */
 export async function clearDirty(): Promise<void> {
   dirty.clear();
-  try { await AsyncStorage.removeItem(QUEUE_KEY); } catch {}
+  try {
+    await AsyncStorage.removeItem(QUEUE_KEY);
+  } catch (err) {
+    console.warn('Failed to clear sync queue:', err);
+  }
 }
 
 /** Clears the stored last-UID so the next sign-in always does a full cloud pull. */
 export async function clearLastUid(): Promise<void> {
-  try { await AsyncStorage.removeItem(UID_KEY); } catch {}
+  try {
+    await AsyncStorage.removeItem(UID_KEY);
+  } catch (err) {
+    console.warn('Failed to clear last-uid:', err);
+  }
 }
 
 /** Deletes every cloud doc for the user. Used by reset and account deletion. */

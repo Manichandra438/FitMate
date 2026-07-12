@@ -40,7 +40,14 @@ export default function WaterGlass({ filled, onPress, size = 34 }: Props) {
   }));
 
   return (
-    <PressableScale onPress={onPress} pressedScale={0.88} style={styles.wrap}>
+    <PressableScale
+      onPress={onPress}
+      pressedScale={0.88}
+      style={styles.wrap}
+      accessibilityRole="button"
+      accessibilityLabel={filled ? 'Water glass, filled' : 'Water glass, empty'}
+      accessibilityHint={filled ? 'Double tap to unmark' : 'Double tap to mark as drunk'}
+    >
       <Animated.View style={popStyle}>
         <View
           style={[

@@ -64,8 +64,9 @@ export async function signUpWithEmail(email: string, password: string) {
   const result = await createUserWithEmailAndPassword(auth, email.trim(), password);
   try {
     await sendEmailVerification(result.user);
-  } catch {
+  } catch (err) {
     // best effort — don't block the flow if verification email fails
+    console.warn('Failed to send verification email:', err);
   }
   return result.user;
 }
@@ -91,8 +92,9 @@ export async function changePassword(currentPassword: string, newPassword: strin
 export async function signOutAll() {
   try {
     await GoogleSignin.signOut();
-  } catch {
+  } catch (err) {
     // ignore — Google session may already be gone or user signed in with email
+    console.warn('Google sign-out failed:', err);
   }
   await fbSignOut(auth);
 }
@@ -136,7 +138,8 @@ export async function deleteAccount(emailPassword?: { email: string; password: s
   try {
     await GoogleSignin.revokeAccess();
     await GoogleSignin.signOut();
-  } catch {
+  } catch (err) {
     // best effort
+    console.warn('Failed to revoke/sign out Google session:', err);
   }
 }

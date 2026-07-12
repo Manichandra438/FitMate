@@ -220,7 +220,12 @@ export default function MealsScreen() {
                   <Text style={styles.qaLabel}>{qa.label || 'Quick add'}</Text>
                   <Text style={styles.qaMacros}>{qa.kcal} kcal · {qa.protein}g protein · {qa.addedAt}</Text>
                 </View>
-                <TouchableOpacity onPress={() => removeQuickAdd(qa.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <TouchableOpacity
+                  onPress={() => removeQuickAdd(qa.id)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Remove ${qa.label || 'quick add'}`}
+                >
                   <Ionicons name="close-circle" size={20} color={COLORS.textSecondary} />
                 </TouchableOpacity>
               </View>
@@ -400,6 +405,8 @@ export default function MealsScreen() {
                                     <TouchableOpacity
                                       onPress={() => removeFoodFromMeal(selectedMeal.id, food.id)}
                                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                      accessibilityRole="button"
+                                      accessibilityLabel={`Remove ${food.name}`}
                                     >
                                       <Ionicons name="close-circle" size={16} color={COLORS.textSecondary} />
                                     </TouchableOpacity>

@@ -162,7 +162,11 @@ export default function FoodSearchScreen() {
           returnKeyType="search"
         />
         {query.length > 0 && (
-          <TouchableOpacity onPress={() => { setQuery(''); setResults([]); }}>
+          <TouchableOpacity
+            onPress={() => { setQuery(''); setResults([]); }}
+            accessibilityRole="button"
+            accessibilityLabel="Clear search"
+          >
             <Ionicons name="close-circle" size={18} color={COLORS.textSecondary} />
           </TouchableOpacity>
         )}
@@ -170,12 +174,16 @@ export default function FoodSearchScreen() {
           onPress={() => (navigation as any).navigate('BarcodeScanner', { onFound: handleBarcodeFound })}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           style={styles.barcodeBtn}
+          accessibilityRole="button"
+          accessibilityLabel="Scan barcode"
         >
           <Ionicons name="barcode-outline" size={24} color={colors.primary} />
         </TouchableOpacity>
         <TouchableOpacity
           onPress={() => (navigation as any).navigate('CustomFood', { onCreated: handleBarcodeFound })}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          accessibilityRole="button"
+          accessibilityLabel="Add custom food"
         >
           <Ionicons name="add-circle-outline" size={22} color={colors.primary} />
         </TouchableOpacity>

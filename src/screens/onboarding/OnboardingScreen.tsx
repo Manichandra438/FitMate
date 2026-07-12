@@ -670,7 +670,12 @@ export default function OnboardingScreen() {
       <IFInfoModal visible={ifInfoVisible} onClose={() => setIfInfoVisible(false)} />
       <View style={styles.header}>
         {step > 0 ? (
-          <TouchableOpacity onPress={() => setStep(step - 1)} style={styles.backBtn}>
+          <TouchableOpacity
+            onPress={() => setStep(step - 1)}
+            style={styles.backBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
+          >
             <Ionicons name="arrow-back" size={22} color={colors.textPrimary} />
           </TouchableOpacity>
         ) : (

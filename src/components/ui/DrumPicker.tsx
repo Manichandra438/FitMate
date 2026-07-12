@@ -90,7 +90,12 @@ export default function DrumPicker({
   );
 
   return (
-    <View style={[styles.outer, { width }]}>
+    <View
+      style={[styles.outer, { width }]}
+      accessibilityRole="adjustable"
+      accessibilityLabel={unit ? `${unit} picker` : 'Value picker'}
+      accessibilityValue={{ text: values[selectedIndex] }}
+    >
       <View style={styles.fadeTop} pointerEvents="none" />
       <View style={styles.fadeBottom} pointerEvents="none" />
       <View style={styles.highlight} pointerEvents="none" />
