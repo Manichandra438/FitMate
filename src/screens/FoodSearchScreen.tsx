@@ -15,7 +15,7 @@ import {
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, FoodItem, NutritionixFood } from '../types';
-import { searchFoods, getNutrients } from '../services/nutritionix';
+import { searchFoods, getNutrients, FoodSearchError } from '../services/nutritionix';
 import { useFitStore } from '../store/useFitStore';
 import { success } from '../utils/haptics';
 import { colors } from '../theme';
@@ -34,6 +34,7 @@ export default function FoodSearchScreen() {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<NutritionixFood[]>([]);
   const [loading, setLoading] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
   const [selected, setSelected] = useState<NutritionixFood | null>(null);
   const [grams, setGrams] = useState('100');
   const [gramModalVisible, setGramModalVisible] = useState(false);
@@ -45,13 +46,25 @@ export default function FoodSearchScreen() {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (text.trim().length < 2) {
       setResults([]);
+      setSearchError(null);
       return;
     }
     debounceRef.current = setTimeout(async () => {
       setLoading(true);
-      const foods = await searchFoods(text);
-      setResults(foods);
-      setLoading(false);
+      setSearchError(null);
+      try {
+        const foods = await searchFoods(text);
+        setResults(foods);
+      } catch (err) {
+        setResults([]);
+        setSearchError(
+          err instanceof FoodSearchError && err.status === 429
+            ? 'Food search is rate-limited right now — wait a bit and try again.'
+            : 'Food search failed. Check your connection and try again.'
+        );
+      } finally {
+        setLoading(false);
+      }
     }, 500);
   };
 
@@ -255,7 +268,9 @@ export default function FoodSearchScreen() {
         contentContainerStyle={styles.list}
         keyboardShouldPersistTaps="handled"
         ListEmptyComponent={
-          !loading && query.length >= 2 ? (
+          !loading && searchError ? (
+            <Text style={styles.empty}>{searchError}</Text>
+          ) : !loading && query.length >= 2 ? (
             <Text style={styles.empty}>No results for "{query}"</Text>
           ) : null
         }
