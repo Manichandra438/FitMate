@@ -7,8 +7,11 @@ import { Platform } from 'react-native';
 
 // Copy .env.example → .env and fill in your Firebase values.
 // Never commit .env — it is gitignored.
+// Auth/Firestore init throws synchronously on an empty apiKey, which would crash the
+// whole bundle before React ever mounts — fall back to a placeholder so the app still
+// boots (auth/sync features simply won't work) when .env is missing, e.g. in local dev.
 const firebaseConfig = {
-  apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY ?? '',
+  apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY || 'missing-api-key',
   authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN ?? '',
   projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID ?? '',
   storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET ?? '',
@@ -32,4 +35,4 @@ export const db = initializeFirestore(firebaseApp, {
   experimentalAutoDetectLongPolling: true,
 });
 
-export const isFirebaseConfigured = () => firebaseConfig.apiKey !== 'REPLACE_ME';
+export const isFirebaseConfigured = () => firebaseConfig.apiKey !== 'missing-api-key';
