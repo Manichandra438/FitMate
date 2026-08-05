@@ -38,6 +38,7 @@ export default function FoodSearchScreen() {
   const [selected, setSelected] = useState<NutritionixFood | null>(null);
   const [grams, setGrams] = useState('100');
   const [gramModalVisible, setGramModalVisible] = useState(false);
+  const [addedFoodName, setAddedFoodName] = useState<string | null>(null);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -108,14 +109,7 @@ export default function FoodSearchScreen() {
       setSelected(null);
       setQuery('');
       setResults([]);
-      Alert.alert(
-        'Added!',
-        `${selected.food_name.charAt(0).toUpperCase() + selected.food_name.slice(1)} added to meal.`,
-        [
-          { text: 'Add more', style: 'cancel' },
-          { text: 'Done', onPress: () => navigation.goBack() },
-        ]
-      );
+      setAddedFoodName(selected.food_name);
     } else {
       logMeal(mealId, kcal, protein);
       success();
@@ -357,12 +351,118 @@ export default function FoodSearchScreen() {
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
+
+      {/* Added confirmation */}
+      <Modal
+        visible={addedFoodName !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setAddedFoodName(null)}
+      >
+        <TouchableOpacity
+          style={styles.addedOverlay}
+          activeOpacity={1}
+          onPress={() => setAddedFoodName(null)}
+        >
+          <TouchableOpacity style={styles.addedCard} activeOpacity={1} onPress={() => {}}>
+            <View style={styles.addedIconWrap}>
+              <Ionicons name="checkmark-circle" size={32} color={COLORS.green} />
+            </View>
+            <Text style={styles.addedTitle}>Added!</Text>
+            <Text style={styles.addedText}>
+              {addedFoodName
+                ? addedFoodName.charAt(0).toUpperCase() + addedFoodName.slice(1)
+                : ''}{' '}
+              added to meal.
+            </Text>
+            <View style={styles.addedRow}>
+              <TouchableOpacity
+                style={styles.addedBtnGhost}
+                onPress={() => setAddedFoodName(null)}
+              >
+                <Text style={styles.addedBtnGhostText}>Add more</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.addedBtnPrimary}
+                onPress={() => {
+                  setAddedFoodName(null);
+                  navigation.goBack();
+                }}
+              >
+                <Text style={styles.addedBtnPrimaryText}>Done</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.bg },
+  addedOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(46,42,38,0.35)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  addedCard: {
+    width: '100%',
+    maxWidth: 340,
+    backgroundColor: COLORS.card,
+    borderRadius: 20,
+    padding: 24,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  addedIconWrap: {
+    marginBottom: 10,
+  },
+  addedTitle: {
+    color: COLORS.textPrimary,
+    fontSize: 19,
+    fontWeight: '700',
+    marginBottom: 6,
+  },
+  addedText: {
+    color: COLORS.textSecondary,
+    fontSize: 14,
+    textAlign: 'center',
+    marginBottom: 22,
+  },
+  addedRow: {
+    flexDirection: 'row',
+    gap: 10,
+    width: '100%',
+  },
+  addedBtnGhost: {
+    flex: 1,
+    paddingVertical: 13,
+    borderRadius: 12,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  addedBtnGhostText: {
+    color: COLORS.textSecondary,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  addedBtnPrimary: {
+    flex: 1,
+    paddingVertical: 13,
+    borderRadius: 12,
+    alignItems: 'center',
+    backgroundColor: COLORS.green,
+  },
+  addedBtnPrimaryText: {
+    color: COLORS.bg,
+    fontSize: 14,
+    fontWeight: '700',
+  },
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
