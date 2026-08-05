@@ -336,8 +336,10 @@ export default function MealsScreen() {
                       <View style={styles.foodsList}>
                         {displayFoods.map((food) => (
                           <View key={food.id} style={styles.foodRow}>
-                            <Text style={styles.foodName}>{food.name}</Text>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                            <Text style={styles.foodName} numberOfLines={1} ellipsizeMode="tail">
+                              {food.name}
+                            </Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0 }}>
                               <Text style={styles.foodMacros}>
                                 {food.grams}g · {food.kcal} kcal
                               </Text>
@@ -602,6 +604,8 @@ const styles = StyleSheet.create({
   foodName: {
     color: COLORS.textPrimary,
     fontSize: 14,
+    flex: 1,
+    marginRight: 8,
   },
   foodMacros: {
     color: COLORS.textSecondary,

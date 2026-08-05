@@ -274,7 +274,11 @@ export const useFitStore = create<FitState>()(
               ...s.logs[date],
               meals: s.logs[date].meals.map((m) => {
                 if (m.mealId !== mealId) return m;
-                const foods = [...m.foods, { ...food, id: `adf_${Date.now()}` }];
+                // Before the first food is logged, m.foods still holds the plan's
+                // suggested items (never confirmed eaten) — start fresh instead of
+                // silently counting them as consumed.
+                const baseFoods = m.logged ? m.foods : [];
+                const foods = [...baseFoods, { ...food, id: `adf_${Date.now()}` }];
                 return {
                   ...m,
                   logged: true,
