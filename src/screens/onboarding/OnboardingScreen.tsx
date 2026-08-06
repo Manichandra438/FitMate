@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
+import { appAlert } from '../../components/AppAlert';
 import {
-  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -205,7 +205,7 @@ export default function OnboardingScreen() {
 
   const finish = () => {
     if (!answers) {
-      Alert.alert('Missing info', 'Please fill in all the questions first.');
+      appAlert('Missing info', 'Please fill in all the questions first.');
       return;
     }
     completeOnboarding({ ...answers, goalDate: chosenGoalDate });

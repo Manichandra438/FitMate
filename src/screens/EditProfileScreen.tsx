@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
+import { appAlert } from '../components/AppAlert';
 import {
-  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -172,11 +172,11 @@ export default function EditProfileScreen() {
     const parsedGoal   = parseFloat(goalWeight);
     const cm           = resolvedCm;
 
-    if (!name.trim())                              { Alert.alert('Enter your name');                   return; }
-    if (age < 10 || age > 100)                     { Alert.alert('Enter a valid age (10–100)');        return; }
-    if (isNaN(parsedWeight) || parsedWeight < 20)  { Alert.alert('Enter a valid current weight');      return; }
-    if (isNaN(parsedGoal)   || parsedGoal   < 20)  { Alert.alert('Enter a valid goal weight');         return; }
-    if (cm < 100 || cm > 250)                      { Alert.alert('Enter a valid height');              return; }
+    if (!name.trim())                              { appAlert('Enter your name');                   return; }
+    if (age < 10 || age > 100)                     { appAlert('Enter a valid age (10–100)');        return; }
+    if (isNaN(parsedWeight) || parsedWeight < 20)  { appAlert('Enter a valid current weight');      return; }
+    if (isNaN(parsedGoal)   || parsedGoal   < 20)  { appAlert('Enter a valid goal weight');         return; }
+    if (cm < 100 || cm > 250)                      { appAlert('Enter a valid height');              return; }
 
     setSaving(true);
     try {
@@ -201,13 +201,13 @@ export default function EditProfileScreen() {
       });
       updateMealPlan(mealPlan);
       await flush().catch(() => {});
-      Alert.alert(
+      appAlert(
         'Profile updated',
         `Calorie goal: ${targets.calorieGoal} kcal · Protein: ${targets.proteinGoal} g · Meal plan regenerated.`,
         [{ text: 'Done', onPress: () => navigation.goBack() }]
       );
     } catch (err: any) {
-      Alert.alert('Error', err?.message ?? 'Something went wrong');
+      appAlert('Error', err?.message ?? 'Something went wrong');
     } finally {
       setSaving(false);
     }

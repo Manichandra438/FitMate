@@ -1,4 +1,5 @@
 import React, { useCallback, useState, useMemo } from 'react';
+import { appAlert } from '../components/AppAlert';
 import {
   View,
   Text,
@@ -6,7 +7,6 @@ import {
   ScrollView,
   TouchableOpacity,
   StatusBar,
-  Alert,
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -76,7 +76,7 @@ export default function HomeScreen() {
     dayjs().diff(dayjs(profile.streakFreezeUsedAt), 'day') >= 7;
 
   const handleFreeze = () => {
-    Alert.alert(
+    appAlert(
       'Use streak freeze?',
       "Protect your streak for missing yesterday. Recharges every 7 days.",
       [
@@ -85,7 +85,7 @@ export default function HomeScreen() {
           text: '🛡️ Freeze it',
           onPress: () => {
             const ok = useStreakFreeze();
-            if (!ok) Alert.alert('Not available', 'Freeze recharges every 7 days.');
+            if (!ok) appAlert('Not available', 'Freeze recharges every 7 days.');
           },
         },
       ]

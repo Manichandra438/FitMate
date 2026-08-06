@@ -1,4 +1,5 @@
 import React, { useState, useCallback } from 'react';
+import { appAlert } from '../components/AppAlert';
 import {
   View,
   Text,
@@ -8,7 +9,6 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
-  Alert,
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -89,7 +89,7 @@ export default function WeightScreen() {
   const handleLog = () => {
     const w = parseFloat(inputWeight);
     if (isNaN(w) || w < 30 || w > 300) {
-      Alert.alert('Invalid weight', 'Enter a weight between 30 and 300 kg.');
+      appAlert('Invalid weight', 'Enter a weight between 30 and 300 kg.');
       return;
     }
     logWeight(w, editingDate ?? undefined);
@@ -103,7 +103,7 @@ export default function WeightScreen() {
   };
 
   const handleDeleteEntry = (date: string) => {
-    Alert.alert(
+    appAlert(
       'Delete entry',
       `Remove weight entry for ${dayjs(date).format('ddd, MMM D')}?`,
       [

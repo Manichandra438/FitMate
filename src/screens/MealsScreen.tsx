@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useRef } from 'react';
+import { appAlert } from '../components/AppAlert';
 import {
   View,
   Text,
@@ -7,7 +8,6 @@ import {
   TouchableOpacity,
   Modal,
   TextInput,
-  Alert,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
@@ -112,7 +112,7 @@ export default function MealsScreen() {
     const k = parseFloat(editKcal);
     const p = parseFloat(editProtein);
     if (isNaN(k) || isNaN(p) || k < 0 || p < 0) {
-      Alert.alert('Invalid values', 'Enter valid numbers for kcal and protein.');
+      appAlert('Invalid values', 'Enter valid numbers for kcal and protein.');
       return;
     }
     logMeal(selectedMeal.id, Math.round(k), Math.round(p * 10) / 10);
@@ -138,7 +138,7 @@ export default function MealsScreen() {
 
   const handleCopyYesterday = () => {
     const ok = copyYesterdayMeals();
-    if (!ok) Alert.alert('Nothing to copy', "Yesterday's log has no logged meals.");
+    if (!ok) appAlert('Nothing to copy', "Yesterday's log has no logged meals.");
     else { success(); confetti.current?.burst(); }
   };
 

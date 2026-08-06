@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { appAlert } from '../components/AppAlert';
 import {
   View,
   Text,
@@ -9,7 +10,6 @@ import {
   Modal,
   KeyboardAvoidingView,
   Platform,
-  Alert,
   ActivityIndicator,
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
@@ -79,7 +79,7 @@ export default function FoodSearchScreen() {
     if (!selected) return;
     const g = parseFloat(grams);
     if (isNaN(g) || g <= 0) {
-      Alert.alert('Invalid grams', 'Enter a valid gram amount.');
+      appAlert('Invalid grams', 'Enter a valid gram amount.');
       return;
     }
     const { kcal, protein } = getNutrients(selected, g);

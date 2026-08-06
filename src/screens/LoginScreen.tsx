@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
+import { appAlert } from '../components/AppAlert';
 import {
-  Alert,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -45,7 +45,7 @@ export default function LoginScreen() {
 
   const checkFirebase = () => {
     if (!isFirebaseConfigured()) {
-      Alert.alert(
+      appAlert(
         'Setup required',
         'Firebase is not configured yet. Add your Firebase config in src/services/firebase.ts.'
       );
@@ -60,7 +60,7 @@ export default function LoginScreen() {
     try {
       await signInWithGoogle();
     } catch (err: any) {
-      Alert.alert('Sign-in failed', friendlyAuthError(err));
+      appAlert('Sign-in failed', friendlyAuthError(err));
     } finally {
       setLoading(false);
     }
@@ -68,11 +68,11 @@ export default function LoginScreen() {
 
   const handleEmailAuth = async () => {
     if (!checkFirebase()) return;
-    if (!email.trim()) { Alert.alert('Email required', 'Enter your email address.'); return; }
-    if (!password)     { Alert.alert('Password required', 'Enter your password.'); return; }
+    if (!email.trim()) { appAlert('Email required', 'Enter your email address.'); return; }
+    if (!password)     { appAlert('Password required', 'Enter your password.'); return; }
     if (emailMode === 'signup') {
-      if (password.length < 6) { Alert.alert('Weak password', 'Password must be at least 6 characters.'); return; }
-      if (password !== confirm) { Alert.alert('Passwords don\'t match', 'Re-enter your password in both fields.'); return; }
+      if (password.length < 6) { appAlert('Weak password', 'Password must be at least 6 characters.'); return; }
+      if (password !== confirm) { appAlert('Passwords don\'t match', 'Re-enter your password in both fields.'); return; }
     }
     setLoading(true);
     try {
@@ -83,7 +83,7 @@ export default function LoginScreen() {
         // No alert here — AppNavigator will immediately show EmailVerificationScreen.
       }
     } catch (err: any) {
-      Alert.alert(emailMode === 'signin' ? 'Sign-in failed' : 'Sign-up failed', friendlyAuthError(err));
+      appAlert(emailMode === 'signin' ? 'Sign-in failed' : 'Sign-up failed', friendlyAuthError(err));
     } finally {
       setLoading(false);
     }
@@ -97,7 +97,7 @@ export default function LoginScreen() {
 
   const handleSendReset = async () => {
     if (!resetEmail.trim()) {
-      Alert.alert('Email required', 'Enter your email address.');
+      appAlert('Email required', 'Enter your email address.');
       return;
     }
     setResetLoading(true);
@@ -105,7 +105,7 @@ export default function LoginScreen() {
       await sendPasswordReset(resetEmail);
       setResetSent(true);
     } catch (err: any) {
-      Alert.alert('Failed', friendlyAuthError(err));
+      appAlert('Failed', friendlyAuthError(err));
     } finally {
       setResetLoading(false);
     }

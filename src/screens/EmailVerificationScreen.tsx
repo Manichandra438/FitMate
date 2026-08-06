@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
+import { appAlert } from '../components/AppAlert';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  Alert,
   ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -32,13 +32,13 @@ export default function EmailVerificationScreen({ email, onVerified }: Props) {
       if (auth.currentUser?.emailVerified) {
         onVerified();
       } else {
-        Alert.alert(
+        appAlert(
           'Not verified yet',
           'Please click the link in your inbox, then tap "I\'ve verified it" again.'
         );
       }
     } catch (err: any) {
-      Alert.alert('Error', err?.message ?? 'Could not check verification status.');
+      appAlert('Error', err?.message ?? 'Could not check verification status.');
     } finally {
       setChecking(false);
     }
@@ -49,7 +49,7 @@ export default function EmailVerificationScreen({ email, onVerified }: Props) {
     setResending(true);
     try {
       await resendVerificationEmail();
-      Alert.alert('Email sent', `Verification link re-sent to ${email}`);
+      appAlert('Email sent', `Verification link re-sent to ${email}`);
       setCooldown(60);
       const timer = setInterval(() => {
         setCooldown((prev) => {
@@ -58,7 +58,7 @@ export default function EmailVerificationScreen({ email, onVerified }: Props) {
         });
       }, 1000);
     } catch (err: any) {
-      Alert.alert('Failed', err?.message ?? 'Could not resend. Try again shortly.');
+      appAlert('Failed', err?.message ?? 'Could not resend. Try again shortly.');
     } finally {
       setResending(false);
     }

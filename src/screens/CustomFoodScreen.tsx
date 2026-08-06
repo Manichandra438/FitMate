@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { appAlert } from '../components/AppAlert';
 import {
   View,
   Text,
@@ -6,7 +7,6 @@ import {
   TextInput,
   ScrollView,
   TouchableOpacity,
-  Alert,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
@@ -57,8 +57,8 @@ export default function CustomFoodScreen() {
     const f = parseFloat(fatPer100) || 0;
     const g = parseFloat(defaultGrams) || 100;
 
-    if (!n) { Alert.alert('Missing name', 'Enter a food name.'); return; }
-    if (isNaN(k) || k <= 0) { Alert.alert('Invalid', 'Enter valid kcal per 100g.'); return; }
+    if (!n) { appAlert('Missing name', 'Enter a food name.'); return; }
+    if (isNaN(k) || k <= 0) { appAlert('Invalid', 'Enter valid kcal per 100g.'); return; }
 
     addCustomFood({
       name: n,
@@ -82,7 +82,7 @@ export default function CustomFoodScreen() {
       });
     }
 
-    Alert.alert('Saved!', `"${n}" added to your custom foods.`, [
+    appAlert('Saved!', `"${n}" added to your custom foods.`, [
       { text: 'OK', onPress: () => navigation.goBack() },
     ]);
   };

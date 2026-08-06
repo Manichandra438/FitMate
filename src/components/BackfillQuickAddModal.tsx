@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { appAlert } from './AppAlert';
 import {
   Modal,
   View,
@@ -6,7 +7,6 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  Alert,
 } from 'react-native';
 import dayjs from 'dayjs';
 import { Ionicons } from '@expo/vector-icons';
@@ -54,7 +54,7 @@ export default function BackfillQuickAddModal({ visible, onClose, defaultDate, o
     const c = parseFloat(carbs) || undefined;
     const f = parseFloat(fat) || undefined;
     if (isNaN(k) || k <= 0) {
-      Alert.alert('Invalid', 'Enter valid calories.');
+      appAlert('Invalid', 'Enter valid calories.');
       return;
     }
     quickAdd(k, p, label || undefined, selectedDate, c, f);

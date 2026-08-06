@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { appAlert } from '../components/AppAlert';
 import {
   View,
   Text,
@@ -6,7 +7,6 @@ import {
   ScrollView,
   TouchableOpacity,
   TextInput,
-  Alert,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
@@ -46,10 +46,10 @@ export default function MeasurementsScreen() {
         hasAny = true;
       }
     }
-    if (!hasAny) { Alert.alert('Enter at least one measurement.'); return; }
+    if (!hasAny) { appAlert('Enter at least one measurement.'); return; }
     addBodyMeasurement(m);
     setValues({});
-    Alert.alert('Saved!', 'Measurements recorded.');
+    appAlert('Saved!', 'Measurements recorded.');
   };
 
   const delta = (key: keyof BodyMeasurement) => {
