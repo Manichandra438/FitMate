@@ -139,7 +139,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
-    top: PAD - ITEM_H / 2 + ITEM_H,
+    top: (PICKER_H - ITEM_H) / 2,
     height: ITEM_H,
     borderTopWidth: 2,
     borderBottomWidth: 2,
