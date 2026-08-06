@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { appAlert } from '../components/AppAlert';
 import {
   View,
   Text,
@@ -9,13 +10,12 @@ import {
   Modal,
   KeyboardAvoidingView,
   Platform,
-  Alert,
   ActivityIndicator,
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, FoodItem, NutritionixFood } from '../types';
-import { searchFoods, getNutrients } from '../services/nutritionix';
+import { searchFoods, getNutrients, FoodSearchError } from '../services/nutritionix';
 import { useFitStore } from '../store/useFitStore';
 import { success } from '../utils/haptics';
 import { colors } from '../theme';
@@ -34,9 +34,11 @@ export default function FoodSearchScreen() {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<NutritionixFood[]>([]);
   const [loading, setLoading] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
   const [selected, setSelected] = useState<NutritionixFood | null>(null);
   const [grams, setGrams] = useState('100');
   const [gramModalVisible, setGramModalVisible] = useState(false);
+  const [addedFoodName, setAddedFoodName] = useState<string | null>(null);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -45,13 +47,25 @@ export default function FoodSearchScreen() {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (text.trim().length < 2) {
       setResults([]);
+      setSearchError(null);
       return;
     }
     debounceRef.current = setTimeout(async () => {
       setLoading(true);
-      const foods = await searchFoods(text);
-      setResults(foods);
-      setLoading(false);
+      setSearchError(null);
+      try {
+        const foods = await searchFoods(text);
+        setResults(foods);
+      } catch (err) {
+        setResults([]);
+        setSearchError(
+          err instanceof FoodSearchError && err.status === 429
+            ? 'Food search is rate-limited right now — wait a bit and try again.'
+            : 'Food search failed. Check your connection and try again.'
+        );
+      } finally {
+        setLoading(false);
+      }
     }, 500);
   };
 
@@ -65,7 +79,7 @@ export default function FoodSearchScreen() {
     if (!selected) return;
     const g = parseFloat(grams);
     if (isNaN(g) || g <= 0) {
-      Alert.alert('Invalid grams', 'Enter a valid gram amount.');
+      appAlert('Invalid grams', 'Enter a valid gram amount.');
       return;
     }
     const { kcal, protein } = getNutrients(selected, g);
@@ -95,14 +109,7 @@ export default function FoodSearchScreen() {
       setSelected(null);
       setQuery('');
       setResults([]);
-      Alert.alert(
-        'Added!',
-        `${selected.food_name.charAt(0).toUpperCase() + selected.food_name.slice(1)} added to meal.`,
-        [
-          { text: 'Add more', style: 'cancel' },
-          { text: 'Done', onPress: () => navigation.goBack() },
-        ]
-      );
+      setAddedFoodName(selected.food_name);
     } else {
       logMeal(mealId, kcal, protein);
       success();
@@ -255,7 +262,9 @@ export default function FoodSearchScreen() {
         contentContainerStyle={styles.list}
         keyboardShouldPersistTaps="handled"
         ListEmptyComponent={
-          !loading && query.length >= 2 ? (
+          !loading && searchError ? (
+            <Text style={styles.empty}>{searchError}</Text>
+          ) : !loading && query.length >= 2 ? (
             <Text style={styles.empty}>No results for "{query}"</Text>
           ) : null
         }
@@ -342,12 +351,118 @@ export default function FoodSearchScreen() {
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
+
+      {/* Added confirmation */}
+      <Modal
+        visible={addedFoodName !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setAddedFoodName(null)}
+      >
+        <TouchableOpacity
+          style={styles.addedOverlay}
+          activeOpacity={1}
+          onPress={() => setAddedFoodName(null)}
+        >
+          <TouchableOpacity style={styles.addedCard} activeOpacity={1} onPress={() => {}}>
+            <View style={styles.addedIconWrap}>
+              <Ionicons name="checkmark-circle" size={32} color={COLORS.green} />
+            </View>
+            <Text style={styles.addedTitle}>Added!</Text>
+            <Text style={styles.addedText}>
+              {addedFoodName
+                ? addedFoodName.charAt(0).toUpperCase() + addedFoodName.slice(1)
+                : ''}{' '}
+              added to meal.
+            </Text>
+            <View style={styles.addedRow}>
+              <TouchableOpacity
+                style={styles.addedBtnGhost}
+                onPress={() => setAddedFoodName(null)}
+              >
+                <Text style={styles.addedBtnGhostText}>Add more</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.addedBtnPrimary}
+                onPress={() => {
+                  setAddedFoodName(null);
+                  navigation.goBack();
+                }}
+              >
+                <Text style={styles.addedBtnPrimaryText}>Done</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.bg },
+  addedOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(46,42,38,0.35)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  addedCard: {
+    width: '100%',
+    maxWidth: 340,
+    backgroundColor: COLORS.card,
+    borderRadius: 20,
+    padding: 24,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  addedIconWrap: {
+    marginBottom: 10,
+  },
+  addedTitle: {
+    color: COLORS.textPrimary,
+    fontSize: 19,
+    fontWeight: '700',
+    marginBottom: 6,
+  },
+  addedText: {
+    color: COLORS.textSecondary,
+    fontSize: 14,
+    textAlign: 'center',
+    marginBottom: 22,
+  },
+  addedRow: {
+    flexDirection: 'row',
+    gap: 10,
+    width: '100%',
+  },
+  addedBtnGhost: {
+    flex: 1,
+    paddingVertical: 13,
+    borderRadius: 12,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  addedBtnGhostText: {
+    color: COLORS.textSecondary,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  addedBtnPrimary: {
+    flex: 1,
+    paddingVertical: 13,
+    borderRadius: 12,
+    alignItems: 'center',
+    backgroundColor: COLORS.green,
+  },
+  addedBtnPrimaryText: {
+    color: COLORS.bg,
+    fontSize: 14,
+    fontWeight: '700',
+  },
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',

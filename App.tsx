@@ -11,6 +11,7 @@ import { scheduleAllNotifications, checkAndSendSmartReminders } from './src/serv
 import { useAuth } from './src/hooks/useAuth';
 import { startSync, stopSync } from './src/services/sync';
 import { scheduleWidgetRefresh } from './src/widgets/updateWidget';
+import AppAlertHost from './src/components/AppAlert';
 
 export default function App() {
   const { user, initializing } = useAuth();
@@ -103,6 +104,7 @@ export default function App() {
           hydrated={hydrated}
           onboarded={onboarded}
         />
+        <AppAlertHost />
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
+import { appAlert } from '../components/AppAlert';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { CameraView, useCameraPermissions, scanFromURLAsync } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
@@ -38,7 +38,7 @@ export default function BarcodeScannerScreen() {
       route.params.onFound(food);
       navigation.goBack();
     } else {
-      Alert.alert(
+      appAlert(
         'Not found',
         `No nutrition data found for barcode ${code}. Try searching by name.`,
         [
@@ -58,7 +58,7 @@ export default function BarcodeScannerScreen() {
   const handlePickFromGallery = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Permission needed', 'Allow photo library access to scan barcodes from images.');
+      appAlert('Permission needed', 'Allow photo library access to scan barcodes from images.');
       return;
     }
 
@@ -78,7 +78,7 @@ export default function BarcodeScannerScreen() {
     setLoading(false);
 
     if (!found || found.length === 0) {
-      Alert.alert(
+      appAlert(
         'No barcode found',
         'Could not detect a barcode in that image. Try a clearer photo or scan directly.',
         [

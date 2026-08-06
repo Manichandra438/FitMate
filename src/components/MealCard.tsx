@@ -25,6 +25,7 @@ export default function MealCard({ meal, log, onPress, compact }: Props) {
   const isLogged = log?.logged;
   const isSkipped = log?.skipped;
   const isPending = !isLogged && !isSkipped;
+  const displayFoods = isLogged && log?.foods?.length ? log.foods : meal.foods;
 
   const [hour, min] = meal.time.split(':').map(Number);
   const ampm = hour >= 12 ? 'PM' : 'AM';
@@ -49,7 +50,7 @@ export default function MealCard({ meal, log, onPress, compact }: Props) {
         <Text style={styles.name}>{meal.name}</Text>
         {!compact && (
           <Text style={styles.foods} numberOfLines={1}>
-            {meal.foods.map((f) => f.name).join(' · ')}
+            {displayFoods.map((f) => f.name).join(' · ')}
           </Text>
         )}
         <Text style={styles.time}>{timeStr}</Text>

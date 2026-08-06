@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { appAlert, appPrompt } from '../components/AppAlert';
 import {
   View,
   Text,
@@ -6,7 +7,6 @@ import {
   ScrollView,
   TouchableOpacity,
   Switch,
-  Alert,
   Image,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
@@ -51,7 +51,7 @@ export default function SettingsScreen() {
     try {
       await fn();
     } catch (err: any) {
-      Alert.alert('Something went wrong', err?.message ?? 'Please try again.');
+      appAlert('Something went wrong', err?.message ?? 'Please try again.');
     } finally {
       setBusy(null);
     }
@@ -60,7 +60,7 @@ export default function SettingsScreen() {
   const handleReschedule = () =>
     run('notif', async () => {
       await scheduleAllNotifications(mealPlan, exercisePlan, profile, notifPrefs);
-      Alert.alert('Notifications', 'Notifications rescheduled successfully!');
+      appAlert('Notifications', 'Notifications rescheduled successfully!');
     });
 
   const handleToggleNotif = async (key: keyof typeof notifPrefs, value: boolean) => {
@@ -74,34 +74,35 @@ export default function SettingsScreen() {
   };
 
   const handleChangePassword = () => {
-    let currentPw = '';
-    Alert.prompt(
+    appPrompt(
       'Current password',
       'Enter your current password to continue.',
       (pw) => {
-        currentPw = pw ?? '';
-        Alert.prompt(
+        if (pw === null) return;
+        const currentPw = pw;
+        appPrompt(
           'New password',
           'Must be at least 6 characters.',
           (newPw) => {
-            if (!newPw || newPw.length < 6) {
-              Alert.alert('Too short', 'Password must be at least 6 characters.');
+            if (newPw === null) return;
+            if (newPw.length < 6) {
+              appAlert('Too short', 'Password must be at least 6 characters.');
               return;
             }
             run('changepw', async () => {
               await changePassword(currentPw, newPw);
-              Alert.alert('Password changed', 'Your password has been updated.');
+              appAlert('Password changed', 'Your password has been updated.');
             });
           },
-          'secure-text'
+          { secure: true }
         );
       },
-      'secure-text'
+      { secure: true }
     );
   };
 
   const handleSignOut = () => {
-    Alert.alert('Sign out', 'Your data stays safely in the cloud. Sign out now?', [
+    appAlert('Sign out', 'Your data stays safely in the cloud. Sign out now?', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Sign out',
@@ -120,7 +121,7 @@ export default function SettingsScreen() {
   };
 
   const handleReset = () => {
-    Alert.alert(
+    appAlert(
       'Reset all data',
       'This deletes ALL your logs, weight history and plan — locally and in the cloud. You will go through setup again. This cannot be undone.',
       [
@@ -157,7 +158,7 @@ export default function SettingsScreen() {
 
   const handleDeleteAccount = () => {
     const providerLabel = authProvider === 'google' ? 'Google account link and ' : '';
-    Alert.alert(
+    appAlert(
       'Delete account',
       `This permanently deletes your ${providerLabel}ALL data from the cloud. You cannot undo this.`,
       [
@@ -166,7 +167,7 @@ export default function SettingsScreen() {
           text: 'Continue',
           style: 'destructive',
           onPress: () =>
-            Alert.alert(
+            appAlert(
               'Are you absolutely sure?',
               `Your account "${user?.email}" and every byte of data will be gone forever. No recovery possible.`,
               [
@@ -177,10 +178,11 @@ export default function SettingsScreen() {
                   onPress: () => {
                     if (authProvider === 'email') {
                       // Need password for re-auth if Firebase requires recent login
-                      Alert.prompt(
+                      appPrompt(
                         'Confirm password',
                         'Enter your password to confirm account deletion.',
                         (pw) => {
+                          if (pw === null) return;
                           run('delete', async () => {
                             await cancelAllNotifications();
                             try { await flush(); } catch { /* best effort */ }
@@ -194,7 +196,7 @@ export default function SettingsScreen() {
                               }
                             }
                             try {
-                              await deleteAccount({ email, password: pw ?? '' });
+                              await deleteAccount({ email, password: pw });
                             } catch (err: any) {
                               throw new Error(friendlyAuthError(err));
                             }
@@ -203,7 +205,7 @@ export default function SettingsScreen() {
                             scheduleWidgetRefresh();
                           });
                         },
-                        'secure-text'
+                        { secure: true }
                       );
                     } else {
                       run('delete', async () => {
@@ -319,7 +321,7 @@ export default function SettingsScreen() {
         label="Redo setup & regenerate plan"
         sub="Re-answer the questions; your logs are kept"
         onPress={() =>
-          Alert.alert(
+          appAlert(
             'Redo setup',
             'You will go through the questions again and get a fresh plan. Your history is kept.',
             [

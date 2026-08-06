@@ -185,9 +185,10 @@ export default function AppNavigator({
         onVerified={() => setEmailVerified(true)}
       />
     );
-  } else if (user && onboarded) {
-    // Signed-in + onboarded: show app immediately from local store.
-    // startSync() refreshes from cloud in background.
+  } else if (onboarded && (user || devBypass)) {
+    // Signed-in + onboarded (or dev bypass with a completed local profile):
+    // show app immediately from local store. startSync() refreshes from cloud
+    // in background when a real user is present.
     content = <MainApp />;
   } else if (devBypass) {
     content = <OnboardingScreen />;
